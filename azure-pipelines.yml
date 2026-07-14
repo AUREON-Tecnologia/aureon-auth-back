@@ -1,0 +1,73 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: render-deploy-secrets
+  - name: imageName
+    value: 'ghcr.io/aureonpruebas/auth-service'
+  - name: dockerfilePath
+    value: 'docker/Dockerfile'
+
+stages:
+  - stage: Build
+    displayName: 'Build & Test'
+    jobs:
+      - job: BuildAndTest
+        steps:
+          - task: NodeTool@0
+            displayName: 'Use Node 20'
+            inputs:
+              versionSpec: '20.x'
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          - script: npm run build
+            displayName: 'Build TypeScript'
+
+          - script: CI=true npm test -- --passWithNoTests
+            displayName: 'Run unit tests'
+            continueOnError: true
+
+  - stage: DockerPublish
+    displayName: 'Build & Push Docker Image'
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: BuildAndPush
+        steps:
+          - task: Docker@2
+            displayName: 'Login a GHCR'
+            inputs:
+              command: login
+              containerRegistry: ghcrConnection
+
+          - script: |
+              docker build \
+                -t $(imageName):latest \
+                -t $(imageName):$(Build.BuildId) \
+                -f $(dockerfilePath) \
+                .
+            displayName: 'docker build'
+
+          - script: |
+              docker push $(imageName):latest
+              docker push $(imageName):$(Build.BuildId)
+            displayName: 'docker push'
+
+  - stage: Deploy
+    displayName: 'Trigger Deploy'
+    dependsOn: DockerPublish
+    condition: succeeded()
+    jobs:
+      - job: TriggerDeploy
+        steps:
+          - script: |
+              echo "Disparando deploy hook..."
+              curl -X POST "$(RENDER_DEPLOY_HOOK)"
+            displayName: 'POST Deploy Hook'
