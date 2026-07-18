@@ -7,6 +7,9 @@ import {
   Matches,
 } from 'class-validator';
 
+const REGEX_PASSWORD_COMPLEJA =
+  /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).+$/;
+
 export class RegisterDto {
   @IsString()
   @IsNotEmpty()
@@ -30,6 +33,9 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
+  @Matches(REGEX_PASSWORD_COMPLEJA, {
+    message: 'La contrasena debe tener al menos una letra, un numero y un caracter especial',
+  })
   password!: string;
 
   @IsString()

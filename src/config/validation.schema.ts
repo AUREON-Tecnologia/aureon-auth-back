@@ -6,6 +6,10 @@ export const validationSchema = Joi.object({
   SUPABASE_URL: Joi.string().uri().required(),
   SUPABASE_SERVICE_ROLE_KEY: Joi.string().required(),
   JWT_SECRET: Joi.string().min(32).required(),
-  JWT_EXPIRES_IN: Joi.string().default('7d'),
+  JWT_EXPIRES_IN: Joi.string().default('30m'),
+  JWT_REFRESH_EXPIRES_IN_DIAS: Joi.number().integer().min(1).default(30),
+  AUTH_MAX_INTENTOS_FALLIDOS: Joi.number().integer().min(1).default(5),
+  AUTH_BLOQUEO_MINUTOS: Joi.number().integer().min(1).default(15),
+  OTP_EXPIRA_MINUTOS: Joi.number().integer().min(1).default(5),
   SERVICE_NAME: Joi.string().default('auth-service'),
 });

@@ -8,14 +8,25 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
+/** Forma exigida por common.yaml#Error (codigo, mensaje, detalles?). */
 interface ErrorResponseBody {
-  success: false;
-  statusCode: number;
-  error: string;
-  message: string | string[];
-  timestamp: string;
-  path: string;
+  codigo: string;
+  mensaje: string;
+  detalles?: string[];
+  bloqueadoHasta?: string;
 }
+
+const CODIGO_POR_ESTADO: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  422: 'UNPROCESSABLE_ENTITY',
+  423: 'CUENTA_BLOQUEADA',
+  429: 'TOO_MANY_REQUESTS',
+  500: 'INTERNAL_SERVER_ERROR',
+};
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -27,39 +38,45 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let errorName = 'INTERNAL_SERVER_ERROR';
-    let message: string | string[] = 'Internal server error';
+    let body: ErrorResponseBody = {
+      codigo: 'INTERNAL_SERVER_ERROR',
+      mensaje: 'Error interno del servidor',
+    };
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
+
       if (typeof res === 'string') {
-        message = res;
+        body = { codigo: CODIGO_POR_ESTADO[status] ?? 'ERROR', mensaje: res };
       } else if (typeof res === 'object' && res !== null) {
-        const r = res as { error?: string; message?: string | string[] };
-        errorName = r.error ?? exception.name;
-        message = r.message ?? exception.message;
+        const r = res as Record<string, unknown>;
+        const mensajeCrudo = r.mensaje ?? r.message;
+
+        if (Array.isArray(mensajeCrudo)) {
+          body = {
+            codigo: (r.codigo as string) ?? CODIGO_POR_ESTADO[status] ?? 'ERROR',
+            mensaje: 'La solicitud no supero las validaciones',
+            detalles: mensajeCrudo as string[],
+          };
+        } else {
+          body = {
+            codigo: (r.codigo as string) ?? CODIGO_POR_ESTADO[status] ?? 'ERROR',
+            mensaje: (mensajeCrudo as string) ?? exception.message,
+          };
+          if (typeof r.bloqueadoHasta === 'string') {
+            body.bloqueadoHasta = r.bloqueadoHasta;
+          }
+        }
       }
-    } else if (exception instanceof Error) {
-      errorName = exception.name;
-      message = exception.message;
     }
 
     if (status >= 500) {
       this.logger.error(
-        `${request.method} ${request.url} -> ${status} ${errorName}: ${JSON.stringify(message)}`,
+        `${request.method} ${request.url} -> ${status} ${body.codigo}: ${body.mensaje}`,
         exception instanceof Error ? exception.stack : undefined,
       );
     }
-
-    const body: ErrorResponseBody = {
-      success: false,
-      statusCode: status,
-      error: errorName,
-      message,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-    };
 
     response.status(status).json(body);
   }

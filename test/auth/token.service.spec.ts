@@ -47,25 +47,28 @@ describe('TokenService', () => {
   });
 
   describe('generateAccessToken', () => {
-    it('genera un JWT firmado con el secret configurado', () => {
-      const token = service.generateAccessToken({
+    it('genera un JWT firmado con el secret configurado y su fecha de expiracion', () => {
+      const antes = Date.now();
+      const { token, expiraEn } = service.generateAccessToken({
         sub: '123',
         email: 'test@test.com',
-        roles: ['ADMIN'],
+        roles: ['administrador'],
       });
       expect(typeof token).toBe('string');
       expect(token.split('.')).toHaveLength(3);
+      expect(expiraEn.getTime()).toBeGreaterThan(antes);
+      expect(expiraEn.getTime()).toBeLessThanOrEqual(antes + 60 * 60 * 1000 + 5000);
     });
   });
 
   describe('verifyAccessToken', () => {
     it('verifica un token valido y retorna el payload', async () => {
-      const payload = { sub: '123', email: 'test@test.com', roles: ['ADMIN'] };
-      const token = service.generateAccessToken(payload);
+      const payload = { sub: '123', email: 'test@test.com', roles: ['administrador'] };
+      const { token } = service.generateAccessToken(payload);
       const decoded = await service.verifyAccessToken(token);
       expect(decoded.sub).toBe('123');
       expect(decoded.email).toBe('test@test.com');
-      expect(decoded.roles).toEqual(['ADMIN']);
+      expect(decoded.roles).toEqual(['administrador']);
     });
 
     it('lanza error cuando el token es invalido', async () => {
@@ -73,10 +76,25 @@ describe('TokenService', () => {
     });
 
     it('lanza error cuando el token tiene firma incorrecta', async () => {
-      const payload = { sub: '123', email: 'test@test.com', roles: ['ADMIN'] };
-      const token = service.generateAccessToken(payload);
+      const payload = { sub: '123', email: 'test@test.com', roles: ['administrador'] };
+      const { token } = service.generateAccessToken(payload);
       const tampered = token.slice(0, -5) + 'XXXXX';
       await expect(service.verifyAccessToken(tampered)).rejects.toBeDefined();
+    });
+  });
+
+  describe('generateOpaqueToken / hashToken', () => {
+    it('genera un token opaco distinto en cada llamada, junto con su hash', () => {
+      const a = service.generateOpaqueToken();
+      const b = service.generateOpaqueToken();
+      expect(a.token).not.toBe(b.token);
+      expect(a.hash).not.toBe(b.hash);
+      expect(a.token).not.toBe(a.hash);
+    });
+
+    it('hashToken es determinista para el mismo valor de entrada', () => {
+      const { token, hash } = service.generateOpaqueToken();
+      expect(service.hashToken(token)).toBe(hash);
     });
   });
 
