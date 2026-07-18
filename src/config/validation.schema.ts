@@ -10,6 +10,8 @@ export const validationSchema = Joi.object({
   JWT_REFRESH_EXPIRES_IN_DIAS: Joi.number().integer().min(1).default(30),
   AUTH_MAX_INTENTOS_FALLIDOS: Joi.number().integer().min(1).default(5),
   AUTH_BLOQUEO_MINUTOS: Joi.number().integer().min(1).default(15),
-  OTP_EXPIRA_MINUTOS: Joi.number().integer().min(1).default(5),
+  USER_TOKEN_EXPIRA_MINUTOS: Joi.number().integer().min(1).default(30),
+  PLATFORM_BOOTSTRAP_KEY: Joi.string().min(16).required(),
+  PLATFORM_DEFAULT_ROLE_CODE: Joi.string().default('cliente'),
   SERVICE_NAME: Joi.string().default('auth-service'),
 });

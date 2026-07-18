@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-/** HU_10: eventos de acceso y cambios administrativos auditables (RNF-007). */
+/** HU_10 (auditoria) + HU_13 (migracion multi-tenant): eventos auditables (RNF-007). */
 export type EventoAuditoria =
   | 'LOGIN_EXITOSO'
   | 'LOGIN_FALLIDO'
@@ -8,15 +8,20 @@ export type EventoAuditoria =
   | 'LOGOUT'
   | 'REFRESH_TOKEN'
   | 'USUARIO_CREADO'
-  | 'USUARIO_ACTUALIZADO'
-  | 'USUARIO_DESACTIVADO'
-  | 'OTP_EMITIDO'
-  | 'OTP_VERIFICADO'
-  | 'OTP_VERIFICACION_FALLIDA';
+  | 'TENANT_CREADO'
+  | 'MEMBRESIA_CREADA'
+  | 'MEMBRESIA_ACTUALIZADA'
+  | 'MEMBRESIA_DESACTIVADA'
+  | 'EMAIL_VERIFICACION_SOLICITADA'
+  | 'EMAIL_VERIFICADO'
+  | 'PASSWORD_RESET_SOLICITADO'
+  | 'PASSWORD_RESET_COMPLETADO'
+  | 'MFA_SETUP_INICIADO';
 
 export interface RegistroAuditoria {
   evento: EventoAuditoria;
   usuarioId?: string;
+  tenantId?: string;
   email?: string;
   actorId?: string;
   detalle?: Record<string, unknown>;
@@ -27,7 +32,7 @@ export class AuditLogService {
   private readonly logger = new Logger('Auditoria');
 
   registrar(registro: RegistroAuditoria): void {
-    // Nunca incluir contrasenas, tokens ni codigos OTP en el detalle de auditoria.
+    // Nunca incluir contrasenas, tokens ni codigos de un solo uso en el detalle de auditoria.
     this.logger.log(JSON.stringify({ ...registro, timestamp: new Date().toISOString() }));
   }
 }

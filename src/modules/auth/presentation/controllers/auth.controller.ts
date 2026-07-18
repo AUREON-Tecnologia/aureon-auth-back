@@ -1,9 +1,8 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Ip, Post, UseGuards } from '@nestjs/common';
 import { AuthCommandService } from '../../application/commands/auth-command.service';
 import { AuthQueryService } from '../../application/queries/auth-query.service';
 import { CurrentUser, JwtPayload } from '../../../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
-import { resolverRolNegocio } from '../../../../common/domain/rol-negocio';
 import { LoginDto } from '../dto/login.dto';
 import { RefreshDto } from '../dto/refresh.dto';
 import { RegisterDto } from '../dto/register.dto';
@@ -21,22 +20,37 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async register(@Body() dto: RegisterDto, @Ip() ip: string): Promise<LoginResponseDto> {
-    const resultado = await this.authCommandService.register(dto, ip);
+  async register(
+    @Body() dto: RegisterDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<LoginResponseDto> {
+    const resultado = await this.authCommandService.register(dto, { ip, userAgent });
     return toLoginResponseDto(resultado);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Ip() ip: string): Promise<LoginResponseDto> {
-    const resultado = await this.authCommandService.login(dto.email, dto.password, ip);
+  async login(
+    @Body() dto: LoginDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<LoginResponseDto> {
+    const resultado = await this.authCommandService.login(dto.email, dto.password, dto.tenantCode, {
+      ip,
+      userAgent,
+    });
     return toLoginResponseDto(resultado);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshDto, @Ip() ip: string): Promise<LoginResponseDto> {
-    const resultado = await this.authCommandService.refresh(dto.refreshToken, ip);
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<LoginResponseDto> {
+    const resultado = await this.authCommandService.refresh(dto.refreshToken, { ip, userAgent });
     return toLoginResponseDto(resultado);
   }
 
@@ -50,7 +64,6 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async me(@CurrentUser() user: JwtPayload): Promise<UsuarioAutenticadoDto> {
     const usuario = await this.authQueryService.getById(user.sub);
-    const rol = resolverRolNegocio(usuario.rol?.nombre);
-    return UsuarioAutenticadoDto.desde(usuario, rol);
+    return UsuarioAutenticadoDto.desde(usuario, user.tenantId, user.roles[0] ?? '');
   }
 }

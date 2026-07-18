@@ -7,10 +7,8 @@ import { SupabaseAuthRepository } from './infrastructure/repositories/supabase-a
 import { SupabaseSessionRepository } from './infrastructure/repositories/supabase-session.repository';
 import { AuthCommandService } from './application/commands/auth-command.service';
 import { AuthQueryService } from './application/queries/auth-query.service';
-import { UsuarioCommandService } from './application/commands/usuario-command.service';
 import { TokenService } from './application/services/token.service';
 import { AuthController } from './presentation/controllers/auth.controller';
-import { UsuariosController } from './presentation/controllers/usuarios.controller';
 import { parseDurationToMs } from '../../common/utils/duration.util';
 
 @Module({
@@ -27,14 +25,16 @@ import { parseDurationToMs } from '../../common/utils/duration.util';
       },
     }),
   ],
-  controllers: [AuthController, UsuariosController],
+  controllers: [AuthController],
   providers: [
     { provide: AUTH_REPOSITORY, useClass: SupabaseAuthRepository },
     { provide: SESSION_REPOSITORY, useClass: SupabaseSessionRepository },
     TokenService,
     AuthCommandService,
     AuthQueryService,
-    UsuarioCommandService,
   ],
+  // Exportado para que TenantsModule (bootstrap del primer admin) y
+  // SelfServiceTokensModule (verificacion de email / reset de password) lo usen.
+  exports: [AUTH_REPOSITORY, SESSION_REPOSITORY],
 })
 export class AuthModule {}

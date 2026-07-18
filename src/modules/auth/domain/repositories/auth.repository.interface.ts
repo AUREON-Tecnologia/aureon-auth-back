@@ -1,43 +1,34 @@
 import { Usuario } from '../entities/usuario.entity';
-import { Paginacion } from '../../../../common/domain/paginacion-meta';
 
 export const AUTH_REPOSITORY = Symbol('IAuthRepository');
 
 export interface CreateUsuarioData {
-  numeroIdentificacion: string;
-  idTipoNumeroIdentificacion: string;
   email: string;
-  telefono: string;
   passwordHash: string;
-  idUsuarioRol: string;
+  primerNombre?: string | null;
+  apellido?: string | null;
 }
 
 export interface UpdateUsuarioData {
-  telefono?: string;
-  idUsuarioRol?: string;
-  activo?: boolean;
-}
-
-export interface FiltrosUsuario {
-  email?: string;
-  activo?: boolean;
-  idUsuarioRol?: string;
+  primerNombre?: string;
+  apellido?: string;
 }
 
 export interface UsuarioWithPassword extends Usuario {
   passwordHash: string;
 }
 
+/** HU_13: respaldo de la tabla global `users` (ya no hay documento de identidad ni rol por usuario — el rol vive en user_tenant_memberships, modulo rbac). */
 export interface IAuthRepository {
   findById(id: string): Promise<Usuario | null>;
   findByEmail(email: string): Promise<Usuario | null>;
   findByEmailWithPassword(email: string): Promise<UsuarioWithPassword | null>;
-  findByNumeroIdentificacion(numeroIdentificacion: string): Promise<Usuario | null>;
-  findAll(filtros: FiltrosUsuario, paginacion: Paginacion): Promise<{ data: Usuario[]; total: number }>;
   create(data: CreateUsuarioData): Promise<Usuario>;
   update(id: string, data: UpdateUsuarioData): Promise<Usuario>;
-  /** HU_04: resetea intentos_fallidos/bloqueado_hasta y marca ultimo_acceso. */
+  /** HU_04: resetea failed_login_attempts/locked_until y marca last_login_at. Global al usuario, no por tenant. */
   registrarLoginExitoso(id: string): Promise<void>;
-  /** HU_04: persiste el nuevo contador y, si aplica, la fecha de bloqueo ya calculada por el llamador. */
   registrarIntentoFallido(id: string, intentosFallidos: number, bloqueadoHasta: Date | null): Promise<void>;
+  /** Usado por self-service-tokens al verificar email / restablecer password. */
+  marcarEmailVerificado(id: string): Promise<void>;
+  actualizarPassword(id: string, passwordHash: string): Promise<void>;
 }

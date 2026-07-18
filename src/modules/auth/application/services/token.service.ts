@@ -7,6 +7,7 @@ import { parseDurationToMs } from '../../../../common/utils/duration.util';
 
 export interface TokenPayload {
   sub: string;
+  tenantId: string;
   email: string;
   roles: string[];
 }

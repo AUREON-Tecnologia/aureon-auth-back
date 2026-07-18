@@ -1,8 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { appConfig, jwtConfig, supabaseConfig, securityConfig, validationSchema } from './config';
+import {
+  appConfig,
+  jwtConfig,
+  supabaseConfig,
+  securityConfig,
+  platformConfig,
+  validationSchema,
+} from './config';
 import { AuthModule } from './modules/auth/auth.module';
-import { OtpModule } from './modules/otp/otp.module';
+import { RbacModule } from './modules/rbac/rbac.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
+import { SelfServiceTokensModule } from './modules/self-service-tokens/self-service-tokens.module';
 import { HealthController } from './modules/health/health.controller';
 import { CommonModule } from './common/common.module';
 import { SupabaseModule } from './common/supabase/supabase.module';
@@ -11,7 +20,7 @@ import { SupabaseModule } from './common/supabase/supabase.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, jwtConfig, supabaseConfig, securityConfig],
+      load: [appConfig, jwtConfig, supabaseConfig, securityConfig, platformConfig],
       validationSchema,
       validationOptions: {
         abortEarly: false,
@@ -19,8 +28,10 @@ import { SupabaseModule } from './common/supabase/supabase.module';
     }),
     CommonModule,
     SupabaseModule,
+    RbacModule,
+    TenantsModule,
     AuthModule,
-    OtpModule,
+    SelfServiceTokensModule,
   ],
   controllers: [HealthController],
 })

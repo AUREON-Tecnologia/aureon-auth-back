@@ -4,17 +4,19 @@ import { SUPABASE_CLIENT } from '../../../../common/supabase/supabase-client.pro
 import {
   CreateSesionData,
   ISessionRepository,
-  SesionUsuario,
 } from '../../domain/repositories/session.repository.interface';
+import { Sesion } from '../../domain/entities/sesion.entity';
 
-/** Columnas reales de identity.sesion_usuario, ver docus/scripts-v2/aureon_ddl_01_identity.sql */
+/** Columnas reales de `user_sessions`, ver docus/scripts-v3/scripts-auth.sql */
 interface SesionRow {
   id: string;
-  id_usuario: string;
-  token_hash: string;
-  expira_en: string;
-  ip_origen: string | null;
-  activa: boolean;
+  user_id: string;
+  tenant_id: string;
+  refresh_token_hash: string;
+  user_agent: string | null;
+  ip_address: string | null;
+  expires_at: string;
+  revoked_at: string | null;
   created_at: string;
 }
 
@@ -22,54 +24,63 @@ interface SesionRow {
 export class SupabaseSessionRepository implements ISessionRepository {
   constructor(@Inject(SUPABASE_CLIENT) private readonly client: SupabaseClient) {}
 
-  async create(data: CreateSesionData): Promise<SesionUsuario> {
+  async create(data: CreateSesionData): Promise<Sesion> {
     const { data: row, error } = await this.client
-      .from('sesion_usuario')
+      .from('user_sessions')
       .insert({
-        id_usuario: data.idUsuario,
-        token_hash: data.tokenHash,
-        expira_en: data.expiraEn.toISOString(),
-        ip_origen: data.ipOrigen ?? null,
+        user_id: data.userId,
+        tenant_id: data.tenantId,
+        refresh_token_hash: data.tokenHash,
+        expires_at: data.expiraEn.toISOString(),
+        user_agent: data.userAgent ?? null,
+        ip_address: data.ipAddress ?? null,
       })
       .select('*')
       .single<SesionRow>();
 
-    if (error) {
-      throw new Error(`Error creando sesion: ${error.message}`);
-    }
-    if (!row) {
-      throw new Error('No se retorno la sesion creada');
-    }
+    if (error) throw new Error(`Error creando sesion: ${error.message}`);
+    if (!row) throw new Error('No se retorno la sesion creada');
     return this.toEntity(row);
   }
 
-  async findByTokenHash(tokenHash: string): Promise<SesionUsuario | null> {
+  async findByTokenHash(tokenHash: string): Promise<Sesion | null> {
     const { data, error } = await this.client
-      .from('sesion_usuario')
+      .from('user_sessions')
       .select('*')
-      .eq('token_hash', tokenHash)
+      .eq('refresh_token_hash', tokenHash)
       .maybeSingle<SesionRow>();
 
-    if (error) {
-      throw new Error(`Error consultando sesion: ${error.message}`);
-    }
+    if (error) throw new Error(`Error consultando sesion: ${error.message}`);
     return data ? this.toEntity(data) : null;
   }
 
   async invalidate(id: string): Promise<void> {
-    const { error } = await this.client.from('sesion_usuario').update({ activa: false }).eq('id', id);
-    if (error) {
-      throw new Error(`Error invalidando sesion: ${error.message}`);
-    }
+    const { error } = await this.client
+      .from('user_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw new Error(`Error invalidando sesion: ${error.message}`);
   }
 
-  private toEntity(row: SesionRow): SesionUsuario {
-    return {
-      id: row.id,
-      idUsuario: row.id_usuario,
-      expiraEn: new Date(row.expira_en),
-      activa: row.activa,
-      creadaEn: new Date(row.created_at),
-    };
+  async invalidateAllForUser(userId: string): Promise<void> {
+    const { error } = await this.client
+      .from('user_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .is('revoked_at', null);
+    if (error) throw new Error(`Error invalidando sesiones del usuario: ${error.message}`);
+  }
+
+  private toEntity(row: SesionRow): Sesion {
+    return new Sesion(
+      row.id,
+      row.user_id,
+      row.tenant_id,
+      new Date(row.expires_at),
+      row.revoked_at ? new Date(row.revoked_at) : null,
+      row.user_agent,
+      row.ip_address,
+      new Date(row.created_at),
+    );
   }
 }

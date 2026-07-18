@@ -9,5 +9,6 @@ export default registerAs('security', () => ({
   maxIntentosFallidos: parseInt(process.env.AUTH_MAX_INTENTOS_FALLIDOS ?? '5', 10),
   bloqueoMinutos: parseInt(process.env.AUTH_BLOQUEO_MINUTOS ?? '15', 10),
   refreshExpiresInDias: parseInt(process.env.JWT_REFRESH_EXPIRES_IN_DIAS ?? '30', 10),
-  otpExpiraMinutos: parseInt(process.env.OTP_EXPIRA_MINUTOS ?? '5', 10),
+  /** HU_13: expiracion compartida por los 3 tipos de user_tokens (email verify/password reset/MFA setup). */
+  userTokenExpiraMinutos: parseInt(process.env.USER_TOKEN_EXPIRA_MINUTOS ?? '30', 10),
 }));

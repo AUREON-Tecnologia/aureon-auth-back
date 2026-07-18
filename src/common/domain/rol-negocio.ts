@@ -1,3 +1,10 @@
+/**
+ * HU_13 (migracion multi-tenant): estos 5 nombres ya NO se validan/exigen en tiempo
+ * de login (un tenant puede crear roles propios via el modulo rbac). Se mantienen
+ * unicamente como catalogo semilla (RbacSeedService los crea con is_system=true en
+ * cada tenant nuevo) y como tipo para los guards legacy (@Roles(...)) que siguen
+ * comprobando compatibilidad con x-roles en el resto del ecosistema AUREON.
+ */
 export const ROLES_NEGOCIO = [
   'administrador',
   'tecnico',
@@ -10,19 +17,4 @@ export type RolNegocio = (typeof ROLES_NEGOCIO)[number];
 
 export function esRolNegocioValido(valor: string): valor is RolNegocio {
   return (ROLES_NEGOCIO as readonly string[]).includes(valor);
-}
-
-/**
- * HU_07: identity.usuario_rol.nombre (catalogo libre en BD) debe alinearse 1:1 con
- * el enum fijo de 5 valores que exige x-roles en el resto de contratos AUREON.
- * Si el nombre de rol en BD no es uno de los 5 valores, no se puede emitir un JWT
- * cuyo rol el resto de microservicios pueda reconocer.
- */
-export function resolverRolNegocio(nombreRolBd: string | undefined): RolNegocio {
-  if (nombreRolBd && esRolNegocioValido(nombreRolBd)) {
-    return nombreRolBd;
-  }
-  throw new Error(
-    `El rol de base de datos "${nombreRolBd ?? '(sin rol)'}" no coincide con ninguno de los x-roles validos: ${ROLES_NEGOCIO.join(', ')}`,
-  );
 }

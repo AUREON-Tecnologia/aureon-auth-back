@@ -51,6 +51,7 @@ describe('TokenService', () => {
       const antes = Date.now();
       const { token, expiraEn } = service.generateAccessToken({
         sub: '123',
+        tenantId: 'tenant-1',
         email: 'test@test.com',
         roles: ['administrador'],
       });
@@ -63,10 +64,11 @@ describe('TokenService', () => {
 
   describe('verifyAccessToken', () => {
     it('verifica un token valido y retorna el payload', async () => {
-      const payload = { sub: '123', email: 'test@test.com', roles: ['administrador'] };
+      const payload = { sub: '123', tenantId: 'tenant-1', email: 'test@test.com', roles: ['administrador'] };
       const { token } = service.generateAccessToken(payload);
       const decoded = await service.verifyAccessToken(token);
       expect(decoded.sub).toBe('123');
+      expect(decoded.tenantId).toBe('tenant-1');
       expect(decoded.email).toBe('test@test.com');
       expect(decoded.roles).toEqual(['administrador']);
     });
@@ -76,7 +78,7 @@ describe('TokenService', () => {
     });
 
     it('lanza error cuando el token tiene firma incorrecta', async () => {
-      const payload = { sub: '123', email: 'test@test.com', roles: ['administrador'] };
+      const payload = { sub: '123', tenantId: 'tenant-1', email: 'test@test.com', roles: ['administrador'] };
       const { token } = service.generateAccessToken(payload);
       const tampered = token.slice(0, -5) + 'XXXXX';
       await expect(service.verifyAccessToken(tampered)).rejects.toBeDefined();

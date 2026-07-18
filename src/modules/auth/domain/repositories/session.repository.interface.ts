@@ -1,23 +1,21 @@
+import { Sesion } from '../entities/sesion.entity';
+
 export const SESSION_REPOSITORY = Symbol('ISessionRepository');
 
-export interface SesionUsuario {
-  id: string;
-  idUsuario: string;
-  expiraEn: Date;
-  activa: boolean;
-  creadaEn: Date;
-}
-
 export interface CreateSesionData {
-  idUsuario: string;
+  userId: string;
+  tenantId: string;
   tokenHash: string;
   expiraEn: Date;
-  ipOrigen?: string | null;
+  userAgent?: string | null;
+  ipAddress?: string | null;
 }
 
-/** HU_01/HU_02: respaldo de identity.sesion_usuario para el refresh token opaco (rotacion + revocacion). */
+/** HU_01/02/13: respaldo de `user_sessions` (refresh token opaco, rotacion + revocacion). */
 export interface ISessionRepository {
-  create(data: CreateSesionData): Promise<SesionUsuario>;
-  findByTokenHash(tokenHash: string): Promise<SesionUsuario | null>;
+  create(data: CreateSesionData): Promise<Sesion>;
+  findByTokenHash(tokenHash: string): Promise<Sesion | null>;
   invalidate(id: string): Promise<void>;
+  /** Usado por password-reset: invalida todas las sesiones activas de un usuario (global, todas sus membresias). */
+  invalidateAllForUser(userId: string): Promise<void>;
 }
