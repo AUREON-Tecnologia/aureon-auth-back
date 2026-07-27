@@ -37,3 +37,4 @@ logs/
 # Misc
 tmp/
 temp/
+.vercel
