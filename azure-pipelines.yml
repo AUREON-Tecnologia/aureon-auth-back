@@ -3,11 +3,11 @@ trigger:
     include:
       - main
 
-steps:
 
-- task: NodeTool@0
-  inputs:
-    versionSpec: '20'
+variables:
+- group: vercel-secrets-variables
+
+steps:
 
 - script: npm ci
 
@@ -19,16 +19,16 @@ steps:
     vercel pull \
       --yes \
       --environment=production \
-      --token=$(vcp_0PMzJKwF02T8Ge9jKvGESWSUN2VNCl0krVDCCHISLE5cbgGNPN1OPNrT)
+      --token=$(VERCEL_TOKEN)
 
     vercel build \
       --prod \
-      --token=$(vcp_0PMzJKwF02T8Ge9jKvGESWSUN2VNCl0krVDCCHISLE5cbgGNPN1OPNrT)
+      --token=$(VERCEL_TOKEN)
 
     vercel deploy \
       --prebuilt \
       --prod \
-      --token=$(vcp_0PMzJKwF02T8Ge9jKvGESWSUN2VNCl0krVDCCHISLE5cbgGNPN1OPNrT)
+      --token=$(VERCEL_TOKEN)
   env:
-    VERCEL_ORG_ID: $(team_zOmNKlmv4FZOUE7OdjFhsMdq)
-    VERCEL_PROJECT_ID: $(prj_Je0LW5ISyKQCp3EU70T9kO7ykcLx)
+    VERCEL_ORG_ID: $(VERCEL_ORG_ID)
+    VERCEL_PROJECT_ID: $(VERCEL_PROJECT_ID)
