@@ -8,7 +8,7 @@ export class HealthController {
   @Get()
   health() {
     return {
-      status: 'ok ready',
+      status: 'ok ready!',
       service: this.configService.get<string>('app.serviceName') ?? 'auth-service',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
