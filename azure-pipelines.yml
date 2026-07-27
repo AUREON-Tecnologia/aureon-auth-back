@@ -3,32 +3,60 @@ trigger:
     include:
       - main
 
-
 variables:
 - group: vercel-secrets-variables
 
-steps:
+stages:
 
-- script: npm ci
+- stage: Build
+  displayName: Build Code
 
-- script: npm run build
+  jobs:
+  - job: Build
+    pool:
+      vmImage: ubuntu-latest
 
-- script: npm install -g vercel
+    steps:
+    - script: npm ci
+      displayName: Install dependencies
 
-- script: |
-    vercel pull \
-      --yes \
-      --environment=production \
-      --token=$(VERCEL_TOKEN)
+    - script: npm run build
+      displayName: Build project
 
-    vercel build \
-      --prod \
-      --token=$(VERCEL_TOKEN)
+- stage: Deploy
+  displayName: Deploy to Vercel
 
-    vercel deploy \
-      --prebuilt \
-      --prod \
-      --token=$(VERCEL_TOKEN)
-  env:
-    VERCEL_ORG_ID: $(VERCEL_ORG_ID)
-    VERCEL_PROJECT_ID: $(VERCEL_PROJECT_ID)
+  dependsOn: Build
+
+  jobs:
+  - deployment: DeployVercel
+
+    environment: Production
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - script: npm install -g vercel
+            displayName: Install Vercel CLI
+
+          - script: |
+              vercel pull \
+                --yes \
+                --environment=production \
+                --token=$(VERCEL_TOKEN)
+
+              vercel build \
+                --prod \
+                --token=$(VERCEL_TOKEN)
+
+              vercel deploy \
+                --prebuilt \
+                --prod \
+                --token=$(VERCEL_TOKEN)
+            displayName: Deploy to Vercel
+
+            env:
+              VERCEL_ORG_ID: $(VERCEL_ORG_ID)
+              VERCEL_PROJECT_ID: $(VERCEL_PROJECT_ID)
