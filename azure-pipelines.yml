@@ -6,57 +6,47 @@ trigger:
 variables:
 - group: vercel-secrets-variables
 
-stages:
+jobs:
+- deployment: DeployProduction
+  displayName: Deploy Backend a Producción
 
-- stage: Build
-  displayName: Build Code
+  pool:
+    vmImage: ubuntu-latest
 
-  jobs:
-  - job: Build
-    pool:
-      vmImage: ubuntu-latest
+  environment: Production
 
-    steps:
-    - script: npm ci
-      displayName: Install dependencies
+  strategy:
+    runOnce:
+      deploy:
+        steps:
 
-    - script: npm run build
-      displayName: Build project
+        - checkout: self
 
-- stage: Deploy
-  displayName: Deploy to Vercel
+        - script: npm ci
+          displayName: Install dependencies
 
-  dependsOn: Build
+        - script: npm run build
+          displayName: Build project
 
-  jobs:
-  - deployment: DeployVercel
+        - script: npm install -g vercel
+          displayName: Install Vercel CLI
 
-    environment: Production
+        - script: |
+            vercel pull \
+              --yes \
+              --environment=production \
+              --token=$(VERCEL_TOKEN)
 
-    strategy:
-      runOnce:
-        deploy:
-          steps:
+            vercel build \
+              --prod \
+              --token=$(VERCEL_TOKEN)
 
-          - script: npm install -g vercel
-            displayName: Install Vercel CLI
-
-          - script: |
-              vercel pull \
-                --yes \
-                --environment=production \
-                --token=$(VERCEL_TOKEN)
-
-              vercel build \
-                --prod \
-                --token=$(VERCEL_TOKEN)
-
-              vercel deploy \
-                --prebuilt \
-                --prod \
-                --token=$(VERCEL_TOKEN)
-            displayName: Deploy to Vercel
-
-            env:
-              VERCEL_ORG_ID: $(VERCEL_ORG_ID)
-              VERCEL_PROJECT_ID: $(VERCEL_PROJECT_ID)
+            vercel deploy \
+              --prebuilt \
+              --prod \
+              --token=$(VERCEL_TOKEN)
+          displayName: Deploy to Vercel
+          env:
+            VERCEL_TOKEN: $(VERCEL_TOKEN)
+            VERCEL_ORG_ID: $(VERCEL_ORG_ID)
+            VERCEL_PROJECT_ID: $(VERCEL_PROJECT_ID)
