@@ -22,8 +22,8 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException({
-        error: 'UNAUTHORIZED',
-        message: 'Missing or invalid Authorization header',
+        codigo: 'UNAUTHORIZED',
+        mensaje: 'Falta el header Authorization o tiene un formato invalido',
       });
     }
 
@@ -31,10 +31,7 @@ export class JwtAuthGuard implements CanActivate {
     const secret = this.configService.get<string>('jwt.secret');
 
     if (!secret) {
-      throw new UnauthorizedException({
-        error: 'UNAUTHORIZED',
-        message: 'JWT secret not configured',
-      });
+      throw new UnauthorizedException({ codigo: 'UNAUTHORIZED', mensaje: 'JWT secret no configurado' });
     }
 
     try {
@@ -42,10 +39,7 @@ export class JwtAuthGuard implements CanActivate {
       request.user = payload;
       return true;
     } catch {
-      throw new UnauthorizedException({
-        error: 'UNAUTHORIZED',
-        message: 'Invalid or expired token',
-      });
+      throw new UnauthorizedException({ codigo: 'UNAUTHORIZED', mensaje: 'Token invalido o expirado' });
     }
   }
 }

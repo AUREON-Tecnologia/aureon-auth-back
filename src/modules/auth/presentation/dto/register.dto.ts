@@ -1,38 +1,29 @@
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsString,
-  MinLength,
-  MaxLength,
-  Matches,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { MENSAJE_PASSWORD_COMPLEJA, REGEX_PASSWORD_COMPLEJA } from '../../../../common/validators/password-policy';
 
 export class RegisterDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
-  numeroIdentificacion!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  idTipoNumeroIdentificacion!: string;
-
   @IsEmail()
   @MaxLength(255)
   email!: string;
 
   @IsString()
-  @IsNotEmpty()
-  @MaxLength(30)
-  @Matches(/^[+]?[0-9\s-]{7,20}$/, { message: 'telefono invalido' })
-  telefono!: string;
-
-  @IsString()
   @MinLength(8)
   @MaxLength(128)
+  @Matches(REGEX_PASSWORD_COMPLEJA, { message: MENSAJE_PASSWORD_COMPLEJA })
   password!: string;
 
   @IsString()
   @IsNotEmpty()
-  idUsuarioRol!: string;
+  @MaxLength(100)
+  tenantCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  primerNombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  apellido?: string;
 }
