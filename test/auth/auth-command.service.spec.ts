@@ -26,6 +26,7 @@ import {
   TENANT_REPOSITORY,
 } from '../../src/modules/tenants/domain/repositories/tenant.repository.interface';
 import { Tenant } from '../../src/modules/tenants/domain/entities/tenant.entity';
+import { buildRbacRepositoryMock } from '../rbac/__helpers__/rbac-repository.mock';
 import { AuditLogService } from '../../src/common/services/audit-log.service';
 import { CuentaBloqueadaException } from '../../src/common/exceptions/cuenta-bloqueada.exception';
 
@@ -129,23 +130,7 @@ describe('AuthCommandService', () => {
       invalidateAllForUser: jest.fn(),
     };
 
-    const rbacRepoMock: jest.Mocked<IRbacRepository> = {
-      crearRol: jest.fn(),
-      buscarRolPorCodigo: jest.fn(),
-      listarRoles: jest.fn(),
-      crearPermiso: jest.fn(),
-      listarPermisos: jest.fn(),
-      asignarPermisoARol: jest.fn(),
-      crearMembresia: jest.fn(),
-      buscarMembresia: jest.fn(),
-      buscarMembresiaPorId: jest.fn(),
-      listarMembresias: jest.fn(),
-      actualizarMembresia: jest.fn(),
-      asignarPermisoDirecto: jest.fn(),
-      quitarPermisoDirecto: jest.fn(),
-      permisosEfectivos: jest.fn().mockResolvedValue([]),
-      tienePermisoEfectivo: jest.fn(),
-    };
+    const rbacRepoMock = buildRbacRepositoryMock();
 
     const tenantRepoMock: jest.Mocked<ITenantRepository> = {
       crear: jest.fn(),

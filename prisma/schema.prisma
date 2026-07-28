@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Tenant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique @db.VarChar(100)
+  name      String   @db.VarChar(255)
+  isActive  Boolean  @default(true) @map("is_active")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  roles          Role[]
+  tenantModules  TenantModule[]
+  userPermissions UserPermission[]
+  userSessions   UserSession[]
+  memberships    UserTenantMembership[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String    @unique @db.Citext
+  passwordHash         String?   @map("password_hash") @db.VarChar(255)
+  emailVerifiedAt      DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  firstName            String?   @map("first_name") @db.VarChar(100)
+  lastName             String?   @map("last_name") @db.VarChar(100)
+  isActive             Boolean   @default(true) @map("is_active")
+  lastLoginAt          DateTime? @map("last_login_at") @db.Timestamptz(6)
+  failedLoginAttempts  Int       @default(0) @map("failed_login_attempts")
+  lockedUntil          DateTime? @map("locked_until") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  rolePermissionsGranted RolePermission[]
+  userCodes               UserCode[]
+  directPermissionsOwned  UserPermission[]        @relation("UserPermissionUser")
+  directPermissionsGranted UserPermission[]       @relation("UserPermissionGrantedBy")
+  sessions                UserSession[]
+  membershipsAsUser       UserTenantMembership[]  @relation("MembershipUser")
+  membershipsInvited      UserTenantMembership[]  @relation("MembershipInvitedBy")
+
+  @@map("users")
+}
+
+model Module {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique @db.VarChar(100)
+  name        String   @db.VarChar(255)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  permissions    Permission[]
+  tenantModules  TenantModule[]
+
+  @@map("modules")
+}
+
+model Permission {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  moduleId  String   @map("module_id") @db.Uuid
+  code      String   @unique @db.VarChar(100)
+  name      String   @db.VarChar(255)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  module           Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  rolePermissions  RolePermission[]
+  userPermissions  UserPermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  code        String   @db.VarChar(100)
+  name        String   @db.VarChar(255)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions  RolePermission[]
+  memberships      UserTenantMembership[]
+
+  @@unique([tenantId, code])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  grantedAt    DateTime @default(now()) @map("granted_at") @db.Timestamptz(6)
+  grantedBy    String?  @map("granted_by") @db.Uuid
+
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedByUser User?    @relation(fields: [grantedBy], references: [id])
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model TenantModule {
+  tenantId    String    @map("tenant_id") @db.Uuid
+  moduleId    String    @map("module_id") @db.Uuid
+  isActive    Boolean   @default(true) @map("is_active")
+  activatedAt DateTime  @default(now()) @map("activated_at") @db.Timestamptz(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, moduleId])
+  @@map("tenant_modules")
+}
+
+model UserPermission {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  permissionId String    @map("permission_id") @db.Uuid
+  effect       String    @default("ALLOW") @db.VarChar(10)
+  grantedAt    DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  grantedBy    String?   @map("granted_by") @db.Uuid
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  reason       String?
+
+  user          User        @relation("UserPermissionUser", fields: [userId], references: [id], onDelete: Cascade)
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permission    Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedByUser User?       @relation("UserPermissionGrantedBy", fields: [grantedBy], references: [id])
+
+  @@unique([userId, tenantId, permissionId])
+  @@map("user_permissions")
+}
+
+model UserSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(255)
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address") @db.Inet
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+}
+
+/// type check constraint: EMAIL_VERIFICATION | PASSWORD_RESET | MFA_SETUP (no lo aplica Prisma, si el codigo de aplicacion)
+model UserCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String    @db.VarChar(50)
+  codeHash  String    @unique @map("code_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_codes")
+}
+
+model UserTenantMembership {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  roleId     String    @map("role_id") @db.Uuid
+  isActive   Boolean   @default(true) @map("is_active")
+  joinedAt   DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  invitedBy  String?   @map("invited_by") @db.Uuid
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  user           User   @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role           Role   @relation(fields: [roleId], references: [id])
+  invitedByUser  User?  @relation("MembershipInvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([userId, tenantId])
+  @@map("user_tenant_memberships")
+}

@@ -132,7 +132,9 @@ export class AuthCommandService {
     }
 
     const userWithHash = await this.authRepository.findByEmailWithPassword(email);
-    const passwordOk = userWithHash ? await bcrypt.compare(password, userWithHash.passwordHash) : false;
+    const passwordOk = userWithHash?.passwordHash
+      ? await bcrypt.compare(password, userWithHash.passwordHash)
+      : false;
 
     if (!passwordOk) {
       const nuevosIntentos = user.intentosFallidos + 1;
