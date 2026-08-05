@@ -1,0 +1,8 @@
+{
+  "name": "@aureon/redis-client",
+  "version": "0.0.0-stub",
+  "description": "STUB TEMPORAL de @aureon/redis-client (ver README.md de esta carpeta). No es el paquete real.",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts"
+}
