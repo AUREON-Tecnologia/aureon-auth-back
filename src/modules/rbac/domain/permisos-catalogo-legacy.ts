@@ -1,14 +1,47 @@
 import { RolNegocio } from '../../../common/domain/rol-negocio';
 
+export interface PermisoLegacySeed {
+  codigo: string;
+  nombre: string;
+}
+
+export interface ModuloLegacySeed {
+  codigo: string;
+  nombre: string;
+  permisos: PermisoLegacySeed[];
+}
+
 /**
- * HU_12 original + HU_13 (migracion): catalogo semilla usado SOLO al crear un tenant
- * nuevo (RbacSeedService), para poblar sus `permissions`/`role_permissions` iniciales
- * de los 5 roles `is_system=true`. Deliberadamente minimo — solo cubre lo que ya tiene
- * contrato OpenAPI hoy (clientes.yaml, auth.yaml). Una vez sembrado, el tenant puede
- * editar/ampliar sus propios roles y permisos via el modulo rbac; este archivo no se
- * vuelve a consultar despues del seed inicial.
+ * HU_12 original + HU_13 (BD real): catalogo semilla GLOBAL (modulos + sus
+ * permisos) — se crea una sola vez en toda la plataforma, no por tenant (a
+ * diferencia del diseño anterior donde cada tenant tenia sus propios permisos).
+ * Deliberadamente minimo — solo cubre lo que ya tiene contrato OpenAPI hoy
+ * (clientes.yaml, auth.yaml). Extender modulo por modulo conforme haya mas.
  */
-const CATALOGO_PERMISOS_LEGACY: Record<RolNegocio, string[]> = {
+export const MODULOS_LEGACY_SEED: ModuloLegacySeed[] = [
+  {
+    codigo: 'clientes',
+    nombre: 'Clientes',
+    permisos: [
+      { codigo: 'clientes:listar', nombre: 'Listar clientes' },
+      { codigo: 'clientes:crear', nombre: 'Crear clientes' },
+      { codigo: 'clientes:editar', nombre: 'Editar clientes' },
+      { codigo: 'clientes:eliminar', nombre: 'Eliminar clientes' },
+    ],
+  },
+  {
+    codigo: 'usuarios',
+    nombre: 'Usuarios',
+    permisos: [
+      { codigo: 'usuarios:listar', nombre: 'Listar usuarios' },
+      { codigo: 'usuarios:crear', nombre: 'Crear usuarios' },
+      { codigo: 'usuarios:editar', nombre: 'Editar usuarios' },
+      { codigo: 'usuarios:desactivar', nombre: 'Desactivar usuarios' },
+    ],
+  },
+];
+
+const PERMISOS_POR_ROL_LEGACY: Record<RolNegocio, string[]> = {
   administrador: [
     'clientes:listar',
     'clientes:crear',
@@ -26,5 +59,5 @@ const CATALOGO_PERMISOS_LEGACY: Record<RolNegocio, string[]> = {
 };
 
 export function permisosLegacyDeRol(rol: RolNegocio): string[] {
-  return CATALOGO_PERMISOS_LEGACY[rol] ?? [];
+  return PERMISOS_POR_ROL_LEGACY[rol] ?? [];
 }

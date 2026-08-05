@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TENANT_REPOSITORY } from './domain/repositories/tenant.repository.interface';
-import { SupabaseTenantRepository } from './infrastructure/repositories/supabase-tenant.repository';
+import { PrismaTenantRepository } from './infrastructure/repositories/prisma-tenant.repository';
 import { TenantCommandService } from './application/commands/tenant-command.service';
 import { TenantQueryService } from './application/queries/tenant-query.service';
 import { TenantsController } from './presentation/controllers/tenants.controller';
@@ -17,7 +17,7 @@ import { TenantsController } from './presentation/controllers/tenants.controller
   imports: [AuthModule],
   controllers: [TenantsController],
   providers: [
-    { provide: TENANT_REPOSITORY, useClass: SupabaseTenantRepository },
+    { provide: TENANT_REPOSITORY, useClass: PrismaTenantRepository },
     TenantCommandService,
     TenantQueryService,
   ],

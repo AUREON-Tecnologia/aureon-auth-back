@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { RbacAdminService } from '../../src/modules/rbac/application/services/rbac-admin.service';
-import { IRbacRepository, RBAC_REPOSITORY } from '../../src/modules/rbac/domain/repositories/rbac.repository.interface';
+import { RBAC_REPOSITORY, IRbacRepository } from '../../src/modules/rbac/domain/repositories/rbac.repository.interface';
 import { Rol } from '../../src/modules/rbac/domain/entities/rol.entity';
+import { Permiso } from '../../src/modules/rbac/domain/entities/permiso.entity';
+import { buildRbacRepositoryMock } from './__helpers__/rbac-repository.mock';
 
 const TENANT_ID = 'tenant-uuid-1';
 
@@ -11,30 +13,13 @@ describe('RbacAdminService', () => {
   let repo: jest.Mocked<IRbacRepository>;
 
   beforeEach(async () => {
-    const repoMock: jest.Mocked<IRbacRepository> = {
-      crearRol: jest.fn(),
-      buscarRolPorCodigo: jest.fn(),
-      listarRoles: jest.fn(),
-      crearPermiso: jest.fn(),
-      listarPermisos: jest.fn(),
-      asignarPermisoARol: jest.fn(),
-      crearMembresia: jest.fn(),
-      buscarMembresia: jest.fn(),
-      buscarMembresiaPorId: jest.fn(),
-      listarMembresias: jest.fn(),
-      actualizarMembresia: jest.fn(),
-      asignarPermisoDirecto: jest.fn(),
-      quitarPermisoDirecto: jest.fn(),
-      permisosEfectivos: jest.fn(),
-      tienePermisoEfectivo: jest.fn(),
-    };
+    repo = buildRbacRepositoryMock();
 
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [RbacAdminService, { provide: RBAC_REPOSITORY, useValue: repoMock }],
+      providers: [RbacAdminService, { provide: RBAC_REPOSITORY, useValue: repo }],
     }).compile();
 
     service = moduleRef.get(RbacAdminService);
-    repo = moduleRef.get(RBAC_REPOSITORY);
   });
 
   describe('crearRol', () => {
@@ -56,10 +41,32 @@ describe('RbacAdminService', () => {
     });
   });
 
-  it('asignarPermisoDirecto delega al repositorio con el effect solicitado', async () => {
-    await service.asignarPermisoDirecto('usr-1', 'permiso-1', 'DENY', 'admin-1', 'abuso reportado');
+  describe('crearPermiso', () => {
+    it('crea el permiso (catalogo global) cuando el codigo no existe todavia', async () => {
+      repo.buscarPermisoPorCodigo.mockResolvedValue(null);
+      const nuevo = new Permiso('permiso-1', 'modulo-1', 'reportes:ver', 'Ver reportes', true);
+      repo.crearPermiso.mockResolvedValue(nuevo);
+
+      const result = await service.crearPermiso({ moduloId: 'modulo-1', codigo: 'reportes:ver', nombre: 'Ver reportes' });
+      expect(result).toBe(nuevo);
+    });
+
+    it('lanza ConflictException si el codigo ya existe (unico globalmente, no por tenant)', async () => {
+      repo.buscarPermisoPorCodigo.mockResolvedValue(
+        new Permiso('permiso-1', 'modulo-1', 'reportes:ver', 'Ver reportes', true),
+      );
+      await expect(
+        service.crearPermiso({ moduloId: 'modulo-1', codigo: 'reportes:ver', nombre: 'Ver reportes' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(repo.crearPermiso).not.toHaveBeenCalled();
+    });
+  });
+
+  it('asignarPermisoDirecto delega al repositorio con tenantId y el effect solicitado', async () => {
+    await service.asignarPermisoDirecto('usr-1', TENANT_ID, 'permiso-1', 'DENY', 'admin-1', 'abuso reportado');
     expect(repo.asignarPermisoDirecto).toHaveBeenCalledWith({
       userId: 'usr-1',
+      tenantId: TENANT_ID,
       permisoId: 'permiso-1',
       effect: 'DENY',
       otorgadoPor: 'admin-1',
@@ -67,8 +74,8 @@ describe('RbacAdminService', () => {
     });
   });
 
-  it('quitarPermisoDirecto delega al repositorio', async () => {
-    await service.quitarPermisoDirecto('usr-1', 'permiso-1');
-    expect(repo.quitarPermisoDirecto).toHaveBeenCalledWith('usr-1', 'permiso-1');
+  it('quitarPermisoDirecto delega al repositorio con tenantId', async () => {
+    await service.quitarPermisoDirecto('usr-1', TENANT_ID, 'permiso-1');
+    expect(repo.quitarPermisoDirecto).toHaveBeenCalledWith('usr-1', TENANT_ID, 'permiso-1');
   });
 });

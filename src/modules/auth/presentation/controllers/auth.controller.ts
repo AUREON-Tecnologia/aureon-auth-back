@@ -56,8 +56,12 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Body() dto: LogoutDto): Promise<{ mensaje: string }> {
-    return this.authCommandService.logout(dto.refreshToken);
+  logout(
+    @Body() dto: LogoutDto,
+    @Headers('authorization') authHeader?: string,
+  ): Promise<{ mensaje: string }> {
+    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+    return this.authCommandService.logout(dto.refreshToken, accessToken);
   }
 
   @Get('me')

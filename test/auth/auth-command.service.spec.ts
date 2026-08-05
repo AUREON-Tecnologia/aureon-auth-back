@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
+import { TokenBlacklistWriterService } from '@aureon/redis-client';
 import * as bcrypt from 'bcryptjs';
 import { AuthCommandService } from '../../src/modules/auth/application/commands/auth-command.service';
 import { TokenService } from '../../src/modules/auth/application/services/token.service';
@@ -26,6 +27,7 @@ import {
   TENANT_REPOSITORY,
 } from '../../src/modules/tenants/domain/repositories/tenant.repository.interface';
 import { Tenant } from '../../src/modules/tenants/domain/entities/tenant.entity';
+import { buildRbacRepositoryMock } from '../rbac/__helpers__/rbac-repository.mock';
 import { AuditLogService } from '../../src/common/services/audit-log.service';
 import { CuentaBloqueadaException } from '../../src/common/exceptions/cuenta-bloqueada.exception';
 
@@ -108,8 +110,10 @@ describe('AuthCommandService', () => {
   let rbacRepo: jest.Mocked<IRbacRepository>;
   let tenantRepo: jest.Mocked<ITenantRepository>;
   let tokenService: TokenService;
+  let tokenBlacklistMock: { revoke: jest.Mock };
 
   beforeEach(async () => {
+    tokenBlacklistMock = { revoke: jest.fn() };
     const authRepoMock: jest.Mocked<IAuthRepository> = {
       findById: jest.fn(),
       findByEmail: jest.fn(),
@@ -129,23 +133,7 @@ describe('AuthCommandService', () => {
       invalidateAllForUser: jest.fn(),
     };
 
-    const rbacRepoMock: jest.Mocked<IRbacRepository> = {
-      crearRol: jest.fn(),
-      buscarRolPorCodigo: jest.fn(),
-      listarRoles: jest.fn(),
-      crearPermiso: jest.fn(),
-      listarPermisos: jest.fn(),
-      asignarPermisoARol: jest.fn(),
-      crearMembresia: jest.fn(),
-      buscarMembresia: jest.fn(),
-      buscarMembresiaPorId: jest.fn(),
-      listarMembresias: jest.fn(),
-      actualizarMembresia: jest.fn(),
-      asignarPermisoDirecto: jest.fn(),
-      quitarPermisoDirecto: jest.fn(),
-      permisosEfectivos: jest.fn().mockResolvedValue([]),
-      tienePermisoEfectivo: jest.fn(),
-    };
+    const rbacRepoMock = buildRbacRepositoryMock();
 
     const tenantRepoMock: jest.Mocked<ITenantRepository> = {
       crear: jest.fn(),
@@ -186,6 +174,7 @@ describe('AuthCommandService', () => {
         { provide: RBAC_REPOSITORY, useValue: rbacRepoMock },
         { provide: TENANT_REPOSITORY, useValue: tenantRepoMock },
         { provide: AuditLogService, useValue: { registrar: jest.fn() } },
+        { provide: TokenBlacklistWriterService, useValue: tokenBlacklistMock },
       ],
     }).compile();
 
@@ -392,6 +381,29 @@ describe('AuthCommandService', () => {
       const result = await service.logout('ya-revocado');
       expect(sessionRepo.invalidate).not.toHaveBeenCalled();
       expect(result).toEqual({ mensaje: 'Sesion cerrada correctamente.' });
+    });
+
+    it('si viene el access token vigente, lo blacklistea en Redis con el jti y el TTL restante', async () => {
+      sessionRepo.findByTokenHash.mockResolvedValue(buildSesion());
+      const { token } = tokenService.generateAccessToken({
+        sub: 'usr-uuid-1',
+        tenantId: TENANT_ID,
+        email: 'user@taller.com',
+        roles: ['administrador'],
+      });
+
+      await service.logout('refresh-valido', token);
+
+      expect(tokenBlacklistMock.revoke).toHaveBeenCalledWith(expect.any(String), expect.any(Number));
+      const [jti, ttl] = tokenBlacklistMock.revoke.mock.calls[0];
+      expect(jti).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/));
+      expect(ttl).toBeGreaterThan(0);
+    });
+
+    it('no llama a Redis si no viene access token', async () => {
+      sessionRepo.findByTokenHash.mockResolvedValue(buildSesion());
+      await service.logout('refresh-valido');
+      expect(tokenBlacklistMock.revoke).not.toHaveBeenCalled();
     });
   });
 });

@@ -10,16 +10,15 @@ export interface CrearRolInput {
 }
 
 export interface CrearPermisoInput {
+  moduloId: string;
   codigo: string;
   nombre: string;
-  recurso: string;
-  accion: string;
 }
 
 /**
- * HU_13: administracion de roles/permisos por tenant. No expone edicion/borrado de
- * roles `is_system=true` (protegidos por diseño, ver comentario del propio DDL) —
- * fuera de alcance de esta ronda; solo se crean roles/permisos nuevos y se asignan.
+ * HU_13: administracion de roles (por tenant) y permisos (catalogo global,
+ * agrupado por modulo — ver ModulosService para la gestion de modulos en si).
+ * No expone edicion/borrado de roles `is_system=true` (protegidos por diseño).
  */
 @Injectable()
 export class RbacAdminService {
@@ -45,12 +44,19 @@ export class RbacAdminService {
     return this.rbacRepository.listarRoles(tenantId);
   }
 
-  crearPermiso(tenantId: string, input: CrearPermisoInput): Promise<Permiso> {
-    return this.rbacRepository.crearPermiso({ tenantId, ...input });
+  async crearPermiso(input: CrearPermisoInput): Promise<Permiso> {
+    const existente = await this.rbacRepository.buscarPermisoPorCodigo(input.codigo);
+    if (existente) {
+      throw new ConflictException({
+        codigo: 'PERMISO_YA_EXISTE',
+        mensaje: 'Ya existe un permiso con ese codigo (el catalogo de permisos es global)',
+      });
+    }
+    return this.rbacRepository.crearPermiso(input);
   }
 
-  listarPermisos(tenantId: string): Promise<Permiso[]> {
-    return this.rbacRepository.listarPermisos(tenantId);
+  listarPermisos(): Promise<Permiso[]> {
+    return this.rbacRepository.listarPermisos();
   }
 
   asignarPermisoARol(rolId: string, permisoId: string, otorgadoPor: string): Promise<void> {
@@ -59,6 +65,7 @@ export class RbacAdminService {
 
   asignarPermisoDirecto(
     userId: string,
+    tenantId: string,
     permisoId: string,
     effect: 'ALLOW' | 'DENY',
     otorgadoPor: string,
@@ -66,6 +73,7 @@ export class RbacAdminService {
   ): Promise<void> {
     return this.rbacRepository.asignarPermisoDirecto({
       userId,
+      tenantId,
       permisoId,
       effect,
       otorgadoPor,
@@ -73,7 +81,7 @@ export class RbacAdminService {
     });
   }
 
-  quitarPermisoDirecto(userId: string, permisoId: string): Promise<void> {
-    return this.rbacRepository.quitarPermisoDirecto(userId, permisoId);
+  quitarPermisoDirecto(userId: string, tenantId: string, permisoId: string): Promise<void> {
+    return this.rbacRepository.quitarPermisoDirecto(userId, tenantId, permisoId);
   }
 }

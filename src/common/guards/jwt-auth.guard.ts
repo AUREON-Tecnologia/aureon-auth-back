@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { TokenBlacklistReaderService } from '@aureon/redis-client';
 import { Request } from 'express';
 import { JwtPayload } from '../decorators/current-user.decorator';
 
@@ -14,6 +15,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly tokenBlacklist: TokenBlacklistReaderService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -34,12 +36,18 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException({ codigo: 'UNAUTHORIZED', mensaje: 'JWT secret no configurado' });
     }
 
+    let payload: JwtPayload;
     try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(token, { secret });
-      request.user = payload;
-      return true;
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token, { secret });
     } catch {
       throw new UnauthorizedException({ codigo: 'UNAUTHORIZED', mensaje: 'Token invalido o expirado' });
     }
+
+    if (await this.tokenBlacklist.isRevoked(payload.jti)) {
+      throw new UnauthorizedException({ codigo: 'UNAUTHORIZED', mensaje: 'Token revocado' });
+    }
+
+    request.user = payload;
+    return true;
   }
 }
