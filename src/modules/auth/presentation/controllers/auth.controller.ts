@@ -8,7 +8,7 @@ import { RefreshDto } from '../dto/refresh.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { LogoutDto } from '../dto/logout.dto';
 import { LoginResponseDto } from '../dto/login-response.dto';
-import { UsuarioAutenticadoDto } from '../dto/usuario-autenticado.dto';
+import { AuthenticatedUserDto } from '../dto/authenticated-user.dto';
 import { toLoginResponseDto } from '../mappers/login-response.mapper';
 
 @Controller('auth')
@@ -25,7 +25,16 @@ export class AuthController {
     @Ip() ip: string,
     @Headers('user-agent') userAgent?: string,
   ): Promise<LoginResponseDto> {
-    const resultado = await this.authCommandService.register(dto, { ip, userAgent });
+    const resultado = await this.authCommandService.register(
+      {
+        email: dto.email,
+        password: dto.password,
+        tenantCode: dto.tenantCode,
+        primerNombre: dto.firstName,
+        apellido: dto.lastName,
+      },
+      { ip, userAgent },
+    );
     return toLoginResponseDto(resultado);
   }
 
@@ -59,15 +68,15 @@ export class AuthController {
   logout(
     @Body() dto: LogoutDto,
     @Headers('authorization') authHeader?: string,
-  ): Promise<{ mensaje: string }> {
+  ): Promise<{ message: string }> {
     const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
     return this.authCommandService.logout(dto.refreshToken, accessToken);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async me(@CurrentUser() user: JwtPayload): Promise<UsuarioAutenticadoDto> {
+  async me(@CurrentUser() user: JwtPayload): Promise<AuthenticatedUserDto> {
     const usuario = await this.authQueryService.getById(user.sub);
-    return UsuarioAutenticadoDto.desde(usuario, user.tenantId, user.roles[0] ?? '');
+    return AuthenticatedUserDto.desde(usuario, user.tenantId, user.roles[0] ?? '');
   }
 }

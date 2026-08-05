@@ -74,8 +74,8 @@ curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$BASE_URL/auth/register" \
     \"email\": \"nuevo.usuario@$TENANT_CODE.com\",
     \"password\": \"Password123!\",
     \"tenantCode\": \"$TENANT_CODE\",
-    \"primerNombre\": \"Nuevo\",
-    \"apellido\": \"Usuario\"
+    \"firstName\": \"Nuevo\",
+    \"lastName\": \"Usuario\"
   }"
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ RESP=$(curl -s -X POST "$BASE_URL/auth/login" \
 echo "$RESP"
 ACCESS_TOKEN=$(json_get "$RESP" "token")
 REFRESH_TOKEN=$(json_get "$RESP" "refreshToken")
-TENANT_ID=$(json_get "$RESP" "usuario.tenantId")
+TENANT_ID=$(json_get "$RESP" "user.tenantId")
 echo "accessToken=${ACCESS_TOKEN:0:20}...  refreshToken=${REFRESH_TOKEN:0:20}..."
 
 # ---------------------------------------------------------------------------
