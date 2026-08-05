@@ -1,12 +1,12 @@
-import { UsuarioAutenticadoDto } from './usuario-autenticado.dto';
+import { AuthenticatedUserDto } from './authenticated-user.dto';
 
 /** Forma de salida definida por auth.yaml#LoginResponse (login/register/refresh). */
 export class LoginResponseDto {
   token!: string;
-  tipoToken!: string;
-  expiraEn!: string;
+  tokenType!: string;
+  expiresAt!: string;
   refreshToken!: string;
-  refreshExpiraEn!: string;
-  usuario!: UsuarioAutenticadoDto;
-  permisos!: string[];
+  refreshExpiresAt!: string;
+  user!: AuthenticatedUserDto;
+  permissions!: string[];
 }

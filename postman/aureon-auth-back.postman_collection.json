@@ -121,7 +121,7 @@
             "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"nuevo.usuario@postman-demo.com\",\n  \"password\": \"Password123!\",\n  \"tenantCode\": \"{{tenantCode}}\",\n  \"primerNombre\": \"Nuevo\",\n  \"apellido\": \"Usuario\"\n}"
+              "raw": "{\n  \"email\": \"nuevo.usuario@postman-demo.com\",\n  \"password\": \"Password123!\",\n  \"tenantCode\": \"{{tenantCode}}\",\n  \"firstName\": \"Nuevo\",\n  \"lastName\": \"Usuario\"\n}"
             }
           }
         },

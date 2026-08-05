@@ -366,21 +366,21 @@ describe('AuthCommandService', () => {
 
       const result = await service.logout('refresh-valido');
       expect(sessionRepo.invalidate).toHaveBeenCalledWith(sesion.id);
-      expect(result).toEqual({ mensaje: 'Sesion cerrada correctamente.' });
+      expect(result).toEqual({ message: 'Sesion cerrada correctamente.' });
     });
 
     it('es idempotente: revocar un refresh token inexistente tambien responde 200 sin error', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(null);
       const result = await service.logout('no-existe');
       expect(sessionRepo.invalidate).not.toHaveBeenCalled();
-      expect(result).toEqual({ mensaje: 'Sesion cerrada correctamente.' });
+      expect(result).toEqual({ message: 'Sesion cerrada correctamente.' });
     });
 
     it('es idempotente: revocar un refresh token ya revocado no vuelve a invalidar', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(buildSesion({ revocadaEn: new Date() }));
       const result = await service.logout('ya-revocado');
       expect(sessionRepo.invalidate).not.toHaveBeenCalled();
-      expect(result).toEqual({ mensaje: 'Sesion cerrada correctamente.' });
+      expect(result).toEqual({ message: 'Sesion cerrada correctamente.' });
     });
 
     it('si viene el access token vigente, lo blacklistea en Redis con el jti y el TTL restante', async () => {

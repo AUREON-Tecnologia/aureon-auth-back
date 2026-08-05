@@ -215,7 +215,7 @@ export class AuthCommandService {
    * refresh token en Postgres) no depende de el y funciona igual sin el, como
    * hasta ahora.
    */
-  async logout(refreshToken: string, accessToken?: string): Promise<{ mensaje: string }> {
+  async logout(refreshToken: string, accessToken?: string): Promise<{ message: string }> {
     const hash = this.tokenService.hashToken(refreshToken);
     const sesion = await this.sessionRepository.findByTokenHash(hash);
 
@@ -227,7 +227,7 @@ export class AuthCommandService {
     await this.revocarAccessTokenSiPresente(accessToken);
 
     // Idempotente por contrato: revocar un refresh token ya revocado tambien responde 200.
-    return { mensaje: 'Sesion cerrada correctamente.' };
+    return { message: 'Sesion cerrada correctamente.' };
   }
 
   private async revocarAccessTokenSiPresente(accessToken?: string): Promise<void> {
