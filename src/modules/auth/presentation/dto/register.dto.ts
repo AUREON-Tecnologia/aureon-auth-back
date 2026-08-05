@@ -20,10 +20,10 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  primerNombre?: string;
+  firstName?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  apellido?: string;
+  lastName?: string;
 }

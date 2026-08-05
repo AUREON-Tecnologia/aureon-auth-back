@@ -37,6 +37,17 @@ Detalle completo de estas decisiones y del análisis de brecha: `C:\Users\ginfa\
 - `GET/POST /rbac/permisos`, `POST/DELETE /rbac/permisos/usuarios/:userId[/:permisoId]` (ALLOW/DENY directo)
 - `GET/GET:id/PATCH/DELETE /rbac/membresias` — reemplaza el CRUD de "usuarios" de la ronda anterior; `DELETE` desactiva la **membresía a ese tenant**, nunca el usuario global (podría pertenecer a otros tenants).
 
+## Wire alineado con auth.yaml (inglés) — ya no es deuda pendiente
+
+Los DTOs de presentación de `/auth/register|login|refresh|logout|me` ahora emiten exactamente los nombres de campo en inglés que documenta `auth.yaml` — la nota de `info.description` de ese contrato sobre campos servidos en español (`correo`, `nombre`, `rol`, `tipoToken`, `expiraEn`, `usuario`, `permisos`, `primerNombre`, `apellido`, `mensaje`, `bloqueadoHasta`, `codigo: "CUENTA_BLOQUEADA"`) ya no aplica a este servicio y debería borrarse de `auth.yaml` en su próxima edición. Mapeo aplicado:
+
+- `AuthenticatedUserDto` (antes `UsuarioAutenticadoDto`, `authenticated-user.dto.ts`): `email`/`name`/`role`/`active` (antes `correo`/`nombre`/`rol`/`activo`).
+- `LoginResponseDto`: `tokenType`/`expiresAt`/`refreshExpiresAt`/`user`/`permissions` (antes `tipoToken`/`expiraEn`/`refreshExpiraEn`/`usuario`/`permisos`).
+- `RegisterDto`: `firstName`/`lastName` (antes `primerNombre`/`apellido`) — la capa de aplicación (`RegisterInput`, `Usuario` entity) sigue usando `primerNombre`/`apellido` internamente; el mapeo ocurre en `AuthController.register()`.
+- Logout: `{ message }` (antes `{ mensaje }`).
+- `CuentaBloqueadaException` (423): `codigo: 'LOCKED_ACCOUNT'` (antes `'CUENTA_BLOQUEADA'`) y campo `lockedUntil` (antes `bloqueadoHasta`).
+- `codigo`/`mensaje`/`detalles` del envelope de `Error` (`GlobalExceptionFilter`) **siguen en español a propósito** — vienen de `common.yaml`, compartido con módulos que aún no se tradujeron (rbac, tenants, self-service-tokens, todos fuera de alcance de `auth.yaml`).
+
 ## Modelo de tokens (sin cambios de fondo respecto a la ronda anterior)
 
 Access JWT corto (`JWT_EXPIRES_IN`, default `30m`) + refresh token opaco de vida larga (`JWT_REFRESH_EXPIRES_IN_DIAS`, default `30`, hash en `user_sessions.refresh_token_hash`, rotación en cada uso). Lo que cambió: `sub` del JWT sigue siendo `users.id`, pero ahora el payload también lleva `tenantId` (obligatorio, define contra qué tenant se resuelve todo lo demás en cada request).

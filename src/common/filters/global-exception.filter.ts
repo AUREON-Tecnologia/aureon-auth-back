@@ -8,12 +8,12 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
-/** Forma exigida por common.yaml#Error (codigo, mensaje, detalles?). */
+/** Forma exigida por common.yaml#Error (codigo, mensaje, detalles?) + lockedUntil (auth.yaml#LockedAccountError). */
 interface ErrorResponseBody {
   codigo: string;
   mensaje: string;
   detalles?: string[];
-  bloqueadoHasta?: string;
+  lockedUntil?: string;
 }
 
 const CODIGO_POR_ESTADO: Record<number, string> = {
@@ -23,7 +23,7 @@ const CODIGO_POR_ESTADO: Record<number, string> = {
   404: 'NOT_FOUND',
   409: 'CONFLICT',
   422: 'UNPROCESSABLE_ENTITY',
-  423: 'CUENTA_BLOQUEADA',
+  423: 'LOCKED_ACCOUNT',
   429: 'TOO_MANY_REQUESTS',
   500: 'INTERNAL_SERVER_ERROR',
 };
@@ -64,8 +64,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             codigo: (r.codigo as string) ?? CODIGO_POR_ESTADO[status] ?? 'ERROR',
             mensaje: (mensajeCrudo as string) ?? exception.message,
           };
-          if (typeof r.bloqueadoHasta === 'string') {
-            body.bloqueadoHasta = r.bloqueadoHasta;
+          if (typeof r.lockedUntil === 'string') {
+            body.lockedUntil = r.lockedUntil;
           }
         }
       }
