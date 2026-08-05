@@ -15,7 +15,8 @@ export interface UpdateUsuarioData {
 }
 
 export interface UsuarioWithPassword extends Usuario {
-  passwordHash: string;
+  /** null = reservado para OAuth futuro (ver users.password_hash) — no puede autenticar con password. */
+  passwordHash: string | null;
 }
 
 /** HU_13: respaldo de la tabla global `users` (ya no hay documento de identidad ni rol por usuario — el rol vive en user_tenant_memberships, modulo rbac). */

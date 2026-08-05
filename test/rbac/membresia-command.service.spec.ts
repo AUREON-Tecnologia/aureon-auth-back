@@ -4,6 +4,7 @@ import { MembresiaCommandService } from '../../src/modules/rbac/application/comm
 import { IRbacRepository, RBAC_REPOSITORY } from '../../src/modules/rbac/domain/repositories/rbac.repository.interface';
 import { Membresia } from '../../src/modules/rbac/domain/entities/membresia.entity';
 import { AuditLogService } from '../../src/common/services/audit-log.service';
+import { buildRbacRepositoryMock } from './__helpers__/rbac-repository.mock';
 
 const TENANT_ID = 'tenant-uuid-1';
 
@@ -24,23 +25,7 @@ describe('MembresiaCommandService', () => {
   let auditLog: jest.Mocked<AuditLogService>;
 
   beforeEach(async () => {
-    const repoMock: jest.Mocked<IRbacRepository> = {
-      crearRol: jest.fn(),
-      buscarRolPorCodigo: jest.fn(),
-      listarRoles: jest.fn(),
-      crearPermiso: jest.fn(),
-      listarPermisos: jest.fn(),
-      asignarPermisoARol: jest.fn(),
-      crearMembresia: jest.fn(),
-      buscarMembresia: jest.fn(),
-      buscarMembresiaPorId: jest.fn(),
-      listarMembresias: jest.fn(),
-      actualizarMembresia: jest.fn(),
-      asignarPermisoDirecto: jest.fn(),
-      quitarPermisoDirecto: jest.fn(),
-      permisosEfectivos: jest.fn(),
-      tienePermisoEfectivo: jest.fn(),
-    };
+    const repoMock = buildRbacRepositoryMock();
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [

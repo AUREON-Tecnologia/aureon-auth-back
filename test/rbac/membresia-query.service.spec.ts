@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { MembresiaQueryService } from '../../src/modules/rbac/application/services/membresia-query.service';
 import { IRbacRepository, RBAC_REPOSITORY } from '../../src/modules/rbac/domain/repositories/rbac.repository.interface';
 import { Membresia } from '../../src/modules/rbac/domain/entities/membresia.entity';
+import { buildRbacRepositoryMock } from './__helpers__/rbac-repository.mock';
 
 const TENANT_ID = 'tenant-uuid-1';
 
@@ -11,23 +12,7 @@ describe('MembresiaQueryService', () => {
   let repo: jest.Mocked<IRbacRepository>;
 
   beforeEach(async () => {
-    const repoMock: jest.Mocked<IRbacRepository> = {
-      crearRol: jest.fn(),
-      buscarRolPorCodigo: jest.fn(),
-      listarRoles: jest.fn(),
-      crearPermiso: jest.fn(),
-      listarPermisos: jest.fn(),
-      asignarPermisoARol: jest.fn(),
-      crearMembresia: jest.fn(),
-      buscarMembresia: jest.fn(),
-      buscarMembresiaPorId: jest.fn(),
-      listarMembresias: jest.fn(),
-      actualizarMembresia: jest.fn(),
-      asignarPermisoDirecto: jest.fn(),
-      quitarPermisoDirecto: jest.fn(),
-      permisosEfectivos: jest.fn(),
-      tienePermisoEfectivo: jest.fn(),
-    };
+    const repoMock = buildRbacRepositoryMock();
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [MembresiaQueryService, { provide: RBAC_REPOSITORY, useValue: repoMock }],

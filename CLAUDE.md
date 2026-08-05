@@ -23,7 +23,7 @@ Detalle completo de estas decisiones y del análisis de brecha: `C:\Users\ginfa\
 **`AuthController`** (`/auth`) — público salvo `/me`:
 - `POST /auth/register` — requiere `tenantCode`; solo crea usuarios **globales nuevos** (si el email ya existe en cualquier tenant, `409`). Unirse a un tenant adicional con una cuenta existente no está expuesto vía auto-registro público en esta ronda (requeriría probar posesión de la cuenta primero).
 - `POST /auth/login` — requiere `email`+`password`+`tenantCode`.
-- `POST /auth/refresh`, `POST /auth/logout` — igual que antes (refresh token opaco con rotación).
+- `POST /auth/refresh`, `POST /auth/logout` — igual que antes (refresh token opaco con rotación); `logout` además blacklistea en Redis el access token vigente si viene en `Authorization` (ver "Blacklist de revocación temprana" más abajo).
 - `GET /auth/me` (JWT) — usa `tenantId`/`roles[0]` del propio JWT, no relee la membresía.
 
 **`PasswordResetController`** (`/auth/password`, público): `POST /olvide`, `POST /restablecer` — reset invalida todas las sesiones del usuario al completarse.
@@ -40,6 +40,12 @@ Detalle completo de estas decisiones y del análisis de brecha: `C:\Users\ginfa\
 ## Modelo de tokens (sin cambios de fondo respecto a la ronda anterior)
 
 Access JWT corto (`JWT_EXPIRES_IN`, default `30m`) + refresh token opaco de vida larga (`JWT_REFRESH_EXPIRES_IN_DIAS`, default `30`, hash en `user_sessions.refresh_token_hash`, rotación en cada uso). Lo que cambió: `sub` del JWT sigue siendo `users.id`, pero ahora el payload también lleva `tenantId` (obligatorio, define contra qué tenant se resuelve todo lo demás en cada request).
+
+### Blacklist de revocación temprana del access JWT (Redis)
+
+El access JWT ahora lleva `jti` (uuid). `POST /auth/logout` sigue sin requerir `Authorization` (el `refreshToken` sigue siendo la única credencial obligatoria, ver historia HU-AUTH-02 en `BACKLOG_FUNCIONAL.md`) — pero si el cliente manda el access token vigente en el header, `AuthCommandService.logout` lo decodifica (acepta incluso uno ya expirado, `ignoreExpiration`) y llama a `TokenBlacklistWriterService.revoke(jti, ttlSegundos)` de `@aureon/redis-client` para que deje de ser válido antes de su expiración natural, en vez de esperarla. `JwtAuthGuard` consulta `TokenBlacklistReaderService.isRevoked(jti)` después de validar firma/expiración localmente.
+
+Patrón **blacklist** (no whitelist): la firma JWT sigue siendo la fuente de verdad primaria y se valida sin tocar Redis; Redis solo detecta revocaciones tempranas. Si Redis no responde, se degrada fail-open (se trata como no revocado, se loguea un warning) — Identity es el único servicio con permiso de escritura sobre `identity:token-blacklist:*`; el resto de microservicios AUREON (Customer/Scheduling/Workshop/Inventory/Assistant/Notification) solo importan `TokenBlacklistReaderService` para replicar el mismo guard. Ver `azure/aureon-redis-client` (paquete compartido, todavía sin publicar — se consume via dependencia `file:`, ver su README) y `REDIS_*` en `.env.example`.
 
 ## Seguridad
 
@@ -65,6 +71,7 @@ common/
 config/
   security.config.ts   userTokenExpiraMinutos (antes otpExpiraMinutos, renombrado).
   platform.config.ts    NUEVO — PLATFORM_BOOTSTRAP_KEY, PLATFORM_DEFAULT_ROLE_CODE (rol de auto-registro).
+  redis.config.ts       NUEVO — host/port/password/db/keyPrefix ('identity') para @aureon/redis-client.
 ```
 
 Módulos globales (`@Global()`, sin necesidad de `imports` explícito entre ellos): `CommonModule`, `SupabaseModule`, `RbacModule`, `TenantsModule`. Esto evita un ciclo de imports real: `AuthCommandService` necesita `RBAC_REPOSITORY`/`TENANT_REPOSITORY`, y `TenantCommandService` necesita `AUTH_REPOSITORY` — al ser global uno de los dos lados, ninguno de los dos `@Module` declara al otro en su `imports`.

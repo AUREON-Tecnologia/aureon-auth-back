@@ -1,0 +1,529 @@
+{
+  "info": {
+    "name": "aureon-auth-back",
+    "description": "Coleccion para probar aureon-auth-back (multi-tenant RBAC). Autocontenida: no necesita importar un environment aparte, ya trae sus propias variables de coleccion (editables en la pestaña 'Variables' de la coleccion en Postman). Los requests de Login/Crear tenant/Crear rol/Crear permiso/Crear modulo tienen scripts de test que guardan automaticamente los ids/tokens en esas variables para los siguientes requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "platformBootstrapKey", "value": "secreto-de-plataforma-para-pruebas-locales" },
+    { "key": "tenantCode", "value": "postman-demo" },
+    { "key": "adminEmail", "value": "admin@postman-demo.com" },
+    { "key": "adminPassword", "value": "Password123!" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "tenantId", "value": "" },
+    { "key": "usuarioAdminId", "value": "" },
+    { "key": "moduloId", "value": "" },
+    { "key": "permisoId", "value": "" },
+    { "key": "rolId", "value": "" },
+    { "key": "membresiaId", "value": "" },
+    { "key": "resetToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plataforma (Tenants)",
+      "description": "Protegido por el secreto de plataforma (PLATFORM_BOOTSTRAP_KEY) — no hay rol de super-admin en el schema, se usa un secreto compartido.",
+      "item": [
+        {
+          "name": "Crear tenant (bootstrap)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 creado', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('tenantId', body.tenant.id);",
+                  "pm.environment.set('usuarioAdminId', body.usuarioAdminId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/tenants", "host": ["{{baseUrl}}"], "path": ["tenants"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoTenant\": \"{{tenantCode}}\",\n  \"nombreTenant\": \"Postman Demo\",\n  \"emailAdmin\": \"{{adminEmail}}\",\n  \"passwordAdmin\": \"{{adminPassword}}\",\n  \"primerNombreAdmin\": \"Ana\",\n  \"apellidoAdmin\": \"Admin\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar tenants",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/tenants?pagina=1&tamanioPagina=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants"],
+              "query": [
+                { "key": "pagina", "value": "1" },
+                { "key": "tamanioPagina", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener tenant por id",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Registrar usuario (auto-registro publico)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('201 creado', () => pm.response.to.have.status(201));"] }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nuevo.usuario@postman-demo.com\",\n  \"password\": \"Password123!\",\n  \"tenantCode\": \"{{tenantCode}}\",\n  \"primerNombre\": \"Nuevo\",\n  \"apellido\": \"Usuario\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('accessToken', body.token);",
+                  "pm.environment.set('refreshToken', body.refreshToken);",
+                  "pm.environment.set('tenantId', body.usuario.tenantId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"tenantCode\": \"{{tenantCode}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refrescar token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('accessToken', body.token);",
+                  "pm.environment.set('refreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] },
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          },
+          "description": "Rota el refresh token: el usado en este request queda invalidado, se emite un par nuevo."
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          },
+          "description": "Idempotente: revocar un refreshToken ya revocado tambien responde 200."
+        },
+        {
+          "name": "Perfil propio (/auth/me)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Self-service (password/email/MFA)",
+      "item": [
+        {
+          "name": "Solicitar reset de password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/olvide",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "password", "olvide"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\"\n}" }
+          },
+          "description": "Siempre responde el mismo mensaje generico (no revela si el email existe). El token real solo queda en el log de auditoria del servidor (nunca se devuelve por HTTP) — cópialo de ahi a la variable resetToken para probar 'Restablecer password'."
+        },
+        {
+          "name": "Restablecer password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/restablecer",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "password", "restablecer"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"nuevaPassword\": \"NuevaPassword123!\"\n}"
+            }
+          },
+          "description": "Al completarse invalida TODAS las sesiones activas del usuario (hay que volver a hacer login despues)."
+        },
+        {
+          "name": "Reenviar verificacion de email",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/auth/email/reenviar-verificacion",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "email", "reenviar-verificacion"]
+            }
+          }
+        },
+        {
+          "name": "Verificar email",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/email/verificar",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "email", "verificar"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"pegar-token-del-log-de-auditoria\"\n}" }
+          }
+        },
+        {
+          "name": "Iniciar configuracion MFA",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/auth/mfa/iniciar-configuracion",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "mfa", "iniciar-configuracion"]
+            }
+          },
+          "description": "Solo emite el token de un solo uso (plumbing). No hay generacion/verificacion TOTP real todavia."
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Modulos",
+      "description": "Modulos y permisos son un catalogo GLOBAL compartido por todos los tenants. Crear un modulo nuevo es una operacion de plataforma (bootstrap); un admin de tenant solo ve el catalogo y activa/desactiva para SU tenant.",
+      "item": [
+        {
+          "name": "Crear modulo (bootstrap)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 201) { pm.environment.set('moduloId', body.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/modulos", "host": ["{{baseUrl}}"], "path": ["modulos"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"reportes\",\n  \"nombre\": \"Reportes\",\n  \"descripcion\": \"Modulo de reportes y analitica\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar catalogo de modulos (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/modulos", "host": ["{{baseUrl}}"], "path": ["modulos"] }
+          }
+        },
+        {
+          "name": "Listar modulos activos del tenant (admin)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/modulos-tenant",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "modulos-tenant"]
+            }
+          }
+        },
+        {
+          "name": "Activar modulo para el tenant (admin)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/modulos-tenant/{{moduloId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "modulos-tenant", "{{moduloId}}"]
+            }
+          }
+        },
+        {
+          "name": "Desactivar modulo para el tenant (admin)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/modulos-tenant/{{moduloId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "modulos-tenant", "{{moduloId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Roles",
+      "item": [
+        {
+          "name": "Listar roles del tenant (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/rbac/roles", "host": ["{{baseUrl}}"], "path": ["rbac", "roles"] }
+          }
+        },
+        {
+          "name": "Crear rol (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 201) { pm.environment.set('rolId', body.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/rbac/roles", "host": ["{{baseUrl}}"], "path": ["rbac", "roles"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"gerente\",\n  \"nombre\": \"Gerente\",\n  \"descripcion\": \"Rol intermedio con permisos de solo lectura\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Asignar permiso a rol (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/rbac/roles/{{rolId}}/permisos",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "roles", "{{rolId}}", "permisos"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"permisoId\": \"{{permisoId}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Permisos",
+      "description": "Catalogo GLOBAL de permisos (no por tenant) — agrupados por modulo.",
+      "item": [
+        {
+          "name": "Listar catalogo de permisos (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/rbac/permisos", "host": ["{{baseUrl}}"], "path": ["rbac", "permisos"] }
+          }
+        },
+        {
+          "name": "Crear permiso (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 201) { pm.environment.set('permisoId', body.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/rbac/permisos", "host": ["{{baseUrl}}"], "path": ["rbac", "permisos"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"moduloId\": \"{{moduloId}}\",\n  \"codigo\": \"reportes:ver\",\n  \"nombre\": \"Ver reportes\"\n}"
+            }
+          },
+          "description": "Requiere que el modulo dueño ya exista (ver 'RBAC - Modulos > Crear modulo'). El codigo debe ser unico en TODA la plataforma."
+        },
+        {
+          "name": "Asignar permiso directo a usuario (ALLOW/DENY)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/rbac/permisos/usuarios/{{usuarioAdminId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "permisos", "usuarios", "{{usuarioAdminId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permisoId\": \"{{permisoId}}\",\n  \"effect\": \"ALLOW\",\n  \"razon\": \"Prueba manual desde Postman\"\n}"
+            }
+          },
+          "description": "Requiere que el tenant tenga activo el modulo dueño del permiso (ver 'RBAC - Modulos > Activar modulo'), si no la BD rechaza el insert con un trigger."
+        },
+        {
+          "name": "Quitar permiso directo",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/permisos/usuarios/{{usuarioAdminId}}/{{permisoId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "permisos", "usuarios", "{{usuarioAdminId}}", "{{permisoId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Membresias",
+      "description": "Reemplaza el CRUD de 'usuarios' — gestiona el acceso de un usuario a TU tenant (baja logica = desactiva la membresia, nunca el usuario global).",
+      "item": [
+        {
+          "name": "Listar membresias del tenant (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.length > 0) { pm.environment.set('membresiaId', body.data[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/membresias?pagina=1&tamanioPagina=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "membresias"],
+              "query": [
+                { "key": "pagina", "value": "1" },
+                { "key": "tamanioPagina", "value": "20" },
+                { "key": "activo", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener membresia por id (admin)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/membresias/{{membresiaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "membresias", "{{membresiaId}}"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar membresia (cambiar rol) (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/rbac/membresias/{{membresiaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "membresias", "{{membresiaId}}"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"rolId\": \"{{rolId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Desactivar membresia (baja logica) (admin)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/rbac/membresias/{{membresiaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["rbac", "membresias", "{{membresiaId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

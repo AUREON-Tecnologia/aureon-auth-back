@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { TokenBlacklistWriterService } from '@aureon/redis-client';
 import * as bcrypt from 'bcryptjs';
 import {
   AUTH_REPOSITORY,
@@ -54,6 +55,7 @@ export class AuthCommandService {
     private readonly tokenService: TokenService,
     private readonly configService: ConfigService,
     private readonly auditLog: AuditLogService,
+    private readonly tokenBlacklist: TokenBlacklistWriterService,
   ) {}
 
   /**
@@ -132,7 +134,9 @@ export class AuthCommandService {
     }
 
     const userWithHash = await this.authRepository.findByEmailWithPassword(email);
-    const passwordOk = userWithHash ? await bcrypt.compare(password, userWithHash.passwordHash) : false;
+    const passwordOk = userWithHash?.passwordHash
+      ? await bcrypt.compare(password, userWithHash.passwordHash)
+      : false;
 
     if (!passwordOk) {
       const nuevosIntentos = user.intentosFallidos + 1;
@@ -204,7 +208,14 @@ export class AuthCommandService {
     return this.emitirSesion(user, sesion.tenantId, membresia.rol.codigo, contexto);
   }
 
-  async logout(refreshToken: string): Promise<{ mensaje: string }> {
+  /**
+   * accessToken es opcional (header Authorization de quien llama, si lo manda):
+   * se usa solo para adelantar en Redis la revocacion del access JWT vigente
+   * (blacklist hasta su exp natural). El cierre de sesion en si (invalidar el
+   * refresh token en Postgres) no depende de el y funciona igual sin el, como
+   * hasta ahora.
+   */
+  async logout(refreshToken: string, accessToken?: string): Promise<{ mensaje: string }> {
     const hash = this.tokenService.hashToken(refreshToken);
     const sesion = await this.sessionRepository.findByTokenHash(hash);
 
@@ -213,8 +224,22 @@ export class AuthCommandService {
       this.auditLog.registrar({ evento: 'LOGOUT', usuarioId: sesion.userId, tenantId: sesion.tenantId });
     }
 
+    await this.revocarAccessTokenSiPresente(accessToken);
+
     // Idempotente por contrato: revocar un refresh token ya revocado tambien responde 200.
     return { mensaje: 'Sesion cerrada correctamente.' };
+  }
+
+  private async revocarAccessTokenSiPresente(accessToken?: string): Promise<void> {
+    if (!accessToken) {
+      return;
+    }
+    const payload = this.tokenService.decodeParaRevocacion(accessToken);
+    if (!payload?.jti || !payload.exp) {
+      return;
+    }
+    const ttlSegundos = payload.exp - Math.floor(Date.now() / 1000);
+    await this.tokenBlacklist.revoke(payload.jti, ttlSegundos);
   }
 
   private async emitirSesion(

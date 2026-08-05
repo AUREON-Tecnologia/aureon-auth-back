@@ -7,6 +7,7 @@ import { AUTH_REPOSITORY, IAuthRepository } from '../../src/modules/auth/domain/
 import { Usuario } from '../../src/modules/auth/domain/entities/usuario.entity';
 import { IRbacRepository, RBAC_REPOSITORY } from '../../src/modules/rbac/domain/repositories/rbac.repository.interface';
 import { RbacSeedService } from '../../src/modules/rbac/application/services/rbac-seed.service';
+import { buildRbacRepositoryMock } from '../rbac/__helpers__/rbac-repository.mock';
 import { AuditLogService } from '../../src/common/services/audit-log.service';
 
 const buildTenant = (): Tenant => new Tenant('tenant-1', 'acme-corp', 'Acme Corp', true, {}, new Date());
@@ -60,23 +61,7 @@ describe('TenantCommandService', () => {
       actualizarPassword: jest.fn(),
     };
 
-    const rbacRepoMock: jest.Mocked<IRbacRepository> = {
-      crearRol: jest.fn(),
-      buscarRolPorCodigo: jest.fn(),
-      listarRoles: jest.fn(),
-      crearPermiso: jest.fn(),
-      listarPermisos: jest.fn(),
-      asignarPermisoARol: jest.fn(),
-      crearMembresia: jest.fn(),
-      buscarMembresia: jest.fn(),
-      buscarMembresiaPorId: jest.fn(),
-      listarMembresias: jest.fn(),
-      actualizarMembresia: jest.fn(),
-      asignarPermisoDirecto: jest.fn(),
-      quitarPermisoDirecto: jest.fn(),
-      permisosEfectivos: jest.fn(),
-      tienePermisoEfectivo: jest.fn(),
-    };
+    const rbacRepoMock = buildRbacRepositoryMock();
 
     const rbacSeedMock = { sembrarRolesLegacy: jest.fn() } as unknown as jest.Mocked<RbacSeedService>;
 

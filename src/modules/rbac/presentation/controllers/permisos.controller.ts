@@ -7,6 +7,7 @@ import { RbacAdminService } from '../../application/services/rbac-admin.service'
 import { CrearPermisoDto } from '../dto/crear-permiso.dto';
 import { AsignarPermisoDirectoDto } from '../dto/asignar-permiso-directo.dto';
 
+/** Catalogo de permisos: GLOBAL (compartido por todos los tenants), ver CLAUDE.md. */
 @Controller('rbac/permisos')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('administrador')
@@ -14,14 +15,14 @@ export class PermisosController {
   constructor(private readonly rbacAdminService: RbacAdminService) {}
 
   @Get()
-  listar(@CurrentUser() user: JwtPayload) {
-    return this.rbacAdminService.listarPermisos(user.tenantId);
+  listar() {
+    return this.rbacAdminService.listarPermisos();
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  crear(@Body() dto: CrearPermisoDto, @CurrentUser() user: JwtPayload) {
-    return this.rbacAdminService.crearPermiso(user.tenantId, dto);
+  crear(@Body() dto: CrearPermisoDto) {
+    return this.rbacAdminService.crearPermiso(dto);
   }
 
   @Post('usuarios/:userId')
@@ -31,7 +32,14 @@ export class PermisosController {
     @Body() dto: AsignarPermisoDirectoDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<{ mensaje: string }> {
-    await this.rbacAdminService.asignarPermisoDirecto(userId, dto.permisoId, dto.effect, user.sub, dto.razon);
+    await this.rbacAdminService.asignarPermisoDirecto(
+      userId,
+      user.tenantId,
+      dto.permisoId,
+      dto.effect,
+      user.sub,
+      dto.razon,
+    );
     return { mensaje: 'Permiso directo asignado correctamente.' };
   }
 
@@ -40,8 +48,9 @@ export class PermisosController {
   async quitarDirecto(
     @Param('userId') userId: string,
     @Param('permisoId') permisoId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<{ mensaje: string }> {
-    await this.rbacAdminService.quitarPermisoDirecto(userId, permisoId);
+    await this.rbacAdminService.quitarPermisoDirecto(userId, user.tenantId, permisoId);
     return { mensaje: 'Permiso directo removido correctamente.' };
   }
 }
