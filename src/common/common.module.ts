@@ -1,13 +1,15 @@
 import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { RedisModule } from '@aureon/redis-client';
 import { AuditLogService } from './services/audit-log.service';
 import { parseDurationToMs } from './utils/duration.util';
 
 /**
- * Global: registra JwtModule una sola vez para que JwtService este disponible
- * en cualquier modulo que use JwtAuthGuard (auth, rbac, self-service-tokens...)
- * sin que cada uno tenga que volver a registrarlo.
+ * Global: registra JwtModule y RedisModule una sola vez para que JwtService/
+ * TokenBlacklistWriterService/TokenBlacklistReaderService esten disponibles
+ * en cualquier modulo (auth, rbac, self-service-tokens...) sin que cada uno
+ * tenga que volver a registrarlos.
  */
 @Global()
 @Module({
@@ -23,8 +25,20 @@ import { parseDurationToMs } from './utils/duration.util';
         };
       },
     }),
+    RedisModule.forRootAsync({
+      isGlobal: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        host: configService.get<string>('redis.host')!,
+        port: configService.get<number>('redis.port')!,
+        password: configService.get<string>('redis.password'),
+        db: configService.get<number>('redis.db'),
+        keyPrefix: configService.get<string>('redis.keyPrefix')!,
+      }),
+    }),
   ],
   providers: [AuditLogService],
-  exports: [AuditLogService, JwtModule],
+  exports: [AuditLogService, JwtModule, RedisModule],
 })
 export class CommonModule {}

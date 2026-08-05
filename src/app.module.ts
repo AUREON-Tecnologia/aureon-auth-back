@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { appConfig, jwtConfig, securityConfig, platformConfig, validationSchema } from './config';
+import { appConfig, jwtConfig, securityConfig, platformConfig, redisConfig, validationSchema } from './config';
 import { AuthModule } from './modules/auth/auth.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -13,7 +13,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, jwtConfig, securityConfig, platformConfig],
+      load: [appConfig, jwtConfig, securityConfig, platformConfig, redisConfig],
       validationSchema,
       validationOptions: {
         abortEarly: false,

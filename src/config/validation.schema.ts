@@ -14,4 +14,9 @@ export const validationSchema = Joi.object({
   PLATFORM_BOOTSTRAP_KEY: Joi.string().min(16).required(),
   PLATFORM_DEFAULT_ROLE_CODE: Joi.string().default('cliente'),
   SERVICE_NAME: Joi.string().default('auth-service'),
+  REDIS_HOST: Joi.string().default('localhost'),
+  REDIS_PORT: Joi.number().default(6379),
+  REDIS_PASSWORD: Joi.string().allow('').optional(),
+  REDIS_DB: Joi.number().default(0),
+  REDIS_KEY_PREFIX: Joi.string().default('identity'),
 });
