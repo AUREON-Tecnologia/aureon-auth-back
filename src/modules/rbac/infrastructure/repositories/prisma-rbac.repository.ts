@@ -188,6 +188,15 @@ export class PrismaRbacRepository implements IRbacRepository {
     return { data: rows.map((r) => this.toMembresia(r)), total };
   }
 
+  async listarMembresiasActivasDeUsuario(userId: string): Promise<Membresia[]> {
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: { userId, isActive: true },
+      include: membresiaInclude,
+      orderBy: { joinedAt: 'asc' },
+    });
+    return rows.map((r) => this.toMembresia(r));
+  }
+
   async actualizarMembresia(id: string, data: ActualizarMembresiaData): Promise<Membresia> {
     const row = await this.prisma.userTenantMembership.update({
       where: { id },

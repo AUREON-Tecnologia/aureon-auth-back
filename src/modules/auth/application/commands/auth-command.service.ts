@@ -22,6 +22,7 @@ import { TokenService } from '../services/token.service';
 import { AuditLogService } from '../../../../common/services/audit-log.service';
 import { CuentaBloqueadaException } from '../../../../common/exceptions/cuenta-bloqueada.exception';
 import { IRbacRepository, RBAC_REPOSITORY } from '../../../rbac/domain/repositories/rbac.repository.interface';
+import { Membresia } from '../../../rbac/domain/entities/membresia.entity';
 import { ITenantRepository, TENANT_REPOSITORY } from '../../../tenants/domain/repositories/tenant.repository.interface';
 
 export interface RegisterInput {
@@ -37,12 +38,19 @@ export interface SessionContext {
   userAgent?: string;
 }
 
+export interface TenantSummary {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface AuthSessionResult {
   user: Usuario;
   tenantId: string;
   roleCode: string;
   permissions: string[];
   activeModules: string[];
+  tenants: TenantSummary[];
   accessToken: string;
   accessTokenExpiresAt: Date;
   refreshToken: string;
@@ -104,29 +112,30 @@ export class AuthCommandService {
     return this.emitirSesion(user, tenant.id, codigoRolDefault, context);
   }
 
-  async login(
-    email: string,
-    password: string,
-    tenantCode: string,
-    context?: SessionContext,
-  ): Promise<AuthSessionResult> {
+  /**
+   * Ya no recibe tenantCode: el usuario se identifica solo con email+password,
+   * y el tenant se resuelve a partir de sus membresias activas (la primera,
+   * por fecha de ingreso). Hoy en la practica un usuario tiene una sola
+   * membresia, asi que esto no cambia el comportamiento observable — pero
+   * evita que el cliente deba conocer el tenant de antemano. La lista completa
+   * de tenants del usuario va en `AuthSessionResult.tenants` (via emitirSesion),
+   * pensada para que el frontend pueda ofrecer un selector el dia que un
+   * usuario tenga mas de un tenant; ese flujo de seleccion queda fuera de
+   * alcance por ahora (ver conversacion 2026-08-15).
+   */
+  async login(email: string, password: string, context?: SessionContext): Promise<AuthSessionResult> {
     const maxIntentos = this.configService.get<number>('security.maxIntentosFallidos') ?? 5;
     const minutosBloqueo = this.configService.get<number>('security.bloqueoMinutos') ?? 15;
 
-    const tenant = await this.tenantRepository.findByCode(tenantCode);
-    if (!tenant || !tenant.activo) {
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
-    }
-
     const user = await this.authRepository.findByEmail(email);
     if (!user) {
-      this.auditLog.registrar({ evento: 'LOGIN_FALLIDO', email, tenantId: tenant.id, detalle: { motivo: 'no_existe' } });
+      this.auditLog.registrar({ evento: 'LOGIN_FALLIDO', email, detalle: { motivo: 'no_existe' } });
       throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     // failed_login_attempts/locked_until son globales al usuario (no por tenant, ver CLAUDE.md).
     if (user.bloqueadoHasta && user.bloqueadoHasta.getTime() > Date.now()) {
-      this.auditLog.registrar({ evento: 'CUENTA_BLOQUEADA', usuarioId: user.id, email, tenantId: tenant.id });
+      this.auditLog.registrar({ evento: 'CUENTA_BLOQUEADA', usuarioId: user.id, email });
       throw new CuentaBloqueadaException(user.bloqueadoHasta);
     }
 
@@ -135,7 +144,6 @@ export class AuthCommandService {
         evento: 'LOGIN_FALLIDO',
         usuarioId: user.id,
         email,
-        tenantId: tenant.id,
         detalle: { motivo: 'inactivo' },
       });
       throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
@@ -151,7 +159,7 @@ export class AuthCommandService {
       if (nuevosIntentos >= maxIntentos) {
         const bloqueadoHasta = new Date(Date.now() + minutosBloqueo * 60_000);
         await this.authRepository.registrarIntentoFallido(user.id, nuevosIntentos, bloqueadoHasta);
-        this.auditLog.registrar({ evento: 'CUENTA_BLOQUEADA', usuarioId: user.id, email, tenantId: tenant.id });
+        this.auditLog.registrar({ evento: 'CUENTA_BLOQUEADA', usuarioId: user.id, email });
         throw new CuentaBloqueadaException(bloqueadoHasta);
       }
       await this.authRepository.registrarIntentoFallido(user.id, nuevosIntentos, null);
@@ -159,28 +167,27 @@ export class AuthCommandService {
         evento: 'LOGIN_FALLIDO',
         usuarioId: user.id,
         email,
-        tenantId: tenant.id,
         detalle: { motivo: 'password_incorrecta' },
       });
       throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
-    // La password es correcta: solo ahora se revela si pertenece o no al tenant (mismo mensaje genérico si no).
-    const membresia = await this.rbacRepository.buscarMembresia(user.id, tenant.id);
-    if (!membresia || !membresia.activo || !membresia.rol) {
+    // La password es correcta: solo ahora se revela si tiene o no algun tenant (mismo mensaje generico si no).
+    const membresias = await this.rbacRepository.listarMembresiasActivasDeUsuario(user.id);
+    const membresiaActiva = membresias.find((m) => m.activo && m.rol);
+    if (!membresiaActiva || !membresiaActiva.rol) {
       this.auditLog.registrar({
         evento: 'LOGIN_FALLIDO',
         usuarioId: user.id,
         email,
-        tenantId: tenant.id,
         detalle: { motivo: 'sin_membresia' },
       });
       throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     await this.authRepository.registrarLoginExitoso(user.id);
-    this.auditLog.registrar({ evento: 'LOGIN_EXITOSO', usuarioId: user.id, email, tenantId: tenant.id });
-    return this.emitirSesion(user, tenant.id, membresia.rol.codigo, context);
+    this.auditLog.registrar({ evento: 'LOGIN_EXITOSO', usuarioId: user.id, email, tenantId: membresiaActiva.tenantId });
+    return this.emitirSesion(user, membresiaActiva.tenantId, membresiaActiva.rol.codigo, context);
   }
 
   async refresh(refreshToken: string, context?: SessionContext): Promise<AuthSessionResult> {
@@ -255,10 +262,12 @@ export class AuthCommandService {
     roleCode: string,
     context?: SessionContext,
   ): Promise<AuthSessionResult> {
-    const [permissions, activeModules] = await Promise.all([
+    const [permissions, activeModules, membresias] = await Promise.all([
       this.rbacRepository.permisosEfectivos(user.id, tenantId),
       this.rbacRepository.listActiveModulesForTenant(tenantId),
+      this.rbacRepository.listarMembresiasActivasDeUsuario(user.id),
     ]);
+    const tenants = await this.resolverTenants(membresias);
 
     const accessTokenPayload = {
       sub: user.id,
@@ -303,10 +312,20 @@ export class AuthCommandService {
       roleCode,
       permissions,
       activeModules,
+      tenants,
       accessToken,
       accessTokenExpiresAt,
       refreshToken,
       refreshExpiresAt,
     };
+  }
+
+  private async resolverTenants(membresias: Membresia[]): Promise<TenantSummary[]> {
+    const tenants = await Promise.all(
+      membresias.map((m) => this.tenantRepository.findById(m.tenantId)),
+    );
+    return tenants
+      .filter((t): t is NonNullable<typeof t> => Boolean(t))
+      .map((t) => ({ id: t.id, code: t.codigo, name: t.nombre }));
   }
 }

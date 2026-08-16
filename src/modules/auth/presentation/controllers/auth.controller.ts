@@ -71,10 +71,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
     @Headers('user-agent') userAgent?: string,
   ): Promise<LoginResponseDto> {
-    const resultado = await this.authCommandService.login(dto.email, dto.password, dto.tenantCode, {
-      ip,
-      userAgent,
-    });
+    const resultado = await this.authCommandService.login(dto.email, dto.password, { ip, userAgent });
     this.cookieService.setSessionCookies(res, resultado);
     return toLoginResponseDto(resultado);
   }
