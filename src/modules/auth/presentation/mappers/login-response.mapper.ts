@@ -12,5 +12,6 @@ export function toLoginResponseDto(result: AuthSessionResult): LoginResponseDto 
   dto.user = AuthenticatedUserDto.desde(result.user, result.tenantId, result.roleCode);
   dto.permissions = result.permissions;
   dto.activeModules = result.activeModules;
+  dto.tenants = result.tenants;
   return dto;
 }
