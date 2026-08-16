@@ -97,6 +97,14 @@ export interface IRbacRepository {
     filtros: FiltrosMembresia,
     paginacion: Paginacion,
   ): Promise<{ data: Membresia[]; total: number }>;
+  /**
+   * Todos los tenants a los que un usuario pertenece activamente, sin importar
+   * el tenant "actual" de la sesion — usado por AuthCommandService para resolver
+   * el tenant de login (sin tenantCode) y para poblar `tenants` en la respuesta.
+   * Orden deterministico (mas antigua primero) para que el tenant elegido cuando
+   * hay mas de una membresia sea siempre el mismo.
+   */
+  listarMembresiasActivasDeUsuario(userId: string): Promise<Membresia[]>;
   actualizarMembresia(id: string, data: ActualizarMembresiaData): Promise<Membresia>;
 
   // permisos directos por usuario (ALLOW/DENY), ahora scoped por tenant

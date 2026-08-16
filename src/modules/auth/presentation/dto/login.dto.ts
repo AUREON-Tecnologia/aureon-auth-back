@@ -1,5 +1,6 @@
-import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
+/** Solo email+password: el tenant se resuelve por las membresias activas del usuario, ver AuthCommandService.login(). */
 export class LoginDto {
   @IsEmail()
   @MaxLength(255)
@@ -9,9 +10,4 @@ export class LoginDto {
   @MinLength(1)
   @MaxLength(128)
   password!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  tenantCode!: string;
 }

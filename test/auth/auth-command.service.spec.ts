@@ -230,21 +230,22 @@ describe('AuthCommandService', () => {
   describe('login', () => {
     const email = 'user@taller.com';
     const password = 'Password123!';
-    const tenantCode = 'acme-corp';
 
-    it('camino feliz: devuelve token y refresh cuando las credenciales y la membresia son validas', async () => {
+    it('camino feliz: devuelve token, refresh y la lista de tenants cuando las credenciales y la membresia son validas', async () => {
       const user = buildUsuario({ email });
       const withHash = await buildUsuarioWithPassword({ email }, password);
       authRepo.findByEmail.mockResolvedValue(user);
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
-      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: user.id }));
+      rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([buildMembresia({ userId: user.id })]);
+      tenantRepo.findById.mockResolvedValue(buildTenant());
       sessionRepo.create.mockResolvedValue(buildSesion());
 
-      const result = await service.login(email, password, tenantCode);
+      const result = await service.login(email, password);
 
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
       expect(result.roleCode).toBe('administrador');
+      expect(result.tenants).toEqual([{ id: TENANT_ID, code: 'acme-corp', name: 'Acme Corp' }]);
       expect(authRepo.registrarLoginExitoso).toHaveBeenCalledWith(user.id);
       expect(accessTokenSessionMock.saveSession).toHaveBeenCalledWith(
         expect.stringMatching(/^[0-9a-f-]{36}$/),
@@ -258,20 +259,15 @@ describe('AuthCommandService', () => {
       const withHash = await buildUsuarioWithPassword({ email }, password);
       authRepo.findByEmail.mockResolvedValue(user);
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
-      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: user.id }));
+      rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([buildMembresia({ userId: user.id })]);
       accessTokenSessionMock.saveSession.mockRejectedValue(new RedisUnavailableError('Redis caido'));
 
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(ServiceUnavailableException);
-    });
-
-    it('lanza UnauthorizedException si el tenant no existe', async () => {
-      tenantRepo.findByCode.mockResolvedValue(null);
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(ServiceUnavailableException);
     });
 
     it('lanza UnauthorizedException si el usuario no existe', async () => {
       authRepo.findByEmail.mockResolvedValue(null);
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it('lanza UnauthorizedException y registra el intento fallido si la password es incorrecta', async () => {
@@ -280,13 +276,13 @@ describe('AuthCommandService', () => {
       const withHash = await buildUsuarioWithPassword({ email }, 'OtraPass123!');
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
 
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(authRepo.registrarIntentoFallido).toHaveBeenCalledWith(user.id, 1, null);
     });
 
     it('lanza UnauthorizedException si el usuario no puede autenticar (inactivo/eliminado)', async () => {
       authRepo.findByEmail.mockResolvedValue(buildUsuario({ email, activo: false }));
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(authRepo.findByEmailWithPassword).not.toHaveBeenCalled();
     });
 
@@ -296,25 +292,25 @@ describe('AuthCommandService', () => {
       const withHash = await buildUsuarioWithPassword({ email }, 'OtraPass123!');
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
 
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(CuentaBloqueadaException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(CuentaBloqueadaException);
       expect(authRepo.registrarIntentoFallido).toHaveBeenCalledWith(user.id, MAX_INTENTOS, expect.any(Date));
     });
 
     it('rechaza con 423 sin comparar password si la cuenta ya esta bloqueada', async () => {
       const bloqueadoHasta = new Date(Date.now() + 60_000);
       authRepo.findByEmail.mockResolvedValue(buildUsuario({ email, bloqueadoHasta }));
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(CuentaBloqueadaException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(CuentaBloqueadaException);
       expect(authRepo.findByEmailWithPassword).not.toHaveBeenCalled();
     });
 
-    it('lanza UnauthorizedException si la password es correcta pero no tiene membresia en el tenant', async () => {
+    it('lanza UnauthorizedException si la password es correcta pero no tiene ninguna membresia activa', async () => {
       const user = buildUsuario({ email });
       const withHash = await buildUsuarioWithPassword({ email }, password);
       authRepo.findByEmail.mockResolvedValue(user);
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
-      rbacRepo.buscarMembresia.mockResolvedValue(null);
+      rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([]);
 
-      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(authRepo.registrarLoginExitoso).not.toHaveBeenCalled();
     });
   });

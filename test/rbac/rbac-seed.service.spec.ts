@@ -51,10 +51,10 @@ describe('RbacSeedService', () => {
   it('siembra el catalogo global de modulos y permisos si no existe', async () => {
     await service.sembrarRolesLegacy(TENANT_ID);
 
-    expect(repo.crearModulo).toHaveBeenCalledWith(expect.objectContaining({ codigo: 'clientes' }));
-    expect(repo.crearModulo).toHaveBeenCalledWith(expect.objectContaining({ codigo: 'usuarios' }));
+    expect(repo.crearModulo).toHaveBeenCalledWith(expect.objectContaining({ codigo: 'clients' }));
+    expect(repo.crearModulo).toHaveBeenCalledWith(expect.objectContaining({ codigo: 'users' }));
     expect(repo.crearPermiso).toHaveBeenCalledWith(
-      expect.objectContaining({ codigo: 'clientes:listar', moduloId: 'modulo-clientes' }),
+      expect.objectContaining({ codigo: 'clients:list', moduloId: 'modulo-clients' }),
     );
   });
 
@@ -72,8 +72,8 @@ describe('RbacSeedService', () => {
   it('activa los modulos del catalogo para el tenant', async () => {
     await service.sembrarRolesLegacy(TENANT_ID);
 
-    expect(repo.activarModuloParaTenant).toHaveBeenCalledWith(TENANT_ID, 'modulo-clientes');
-    expect(repo.activarModuloParaTenant).toHaveBeenCalledWith(TENANT_ID, 'modulo-usuarios');
+    expect(repo.activarModuloParaTenant).toHaveBeenCalledWith(TENANT_ID, 'modulo-clients');
+    expect(repo.activarModuloParaTenant).toHaveBeenCalledWith(TENANT_ID, 'modulo-users');
   });
 
   it('siembra los 5 roles legacy como is_system=true', async () => {

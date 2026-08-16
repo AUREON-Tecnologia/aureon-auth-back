@@ -79,13 +79,12 @@ curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$BASE_URL/auth/register" \
   }"
 
 # ---------------------------------------------------------------------------
-seccion "Login"
+seccion "Login (sin tenantCode desde 2026-08-15; ver LoginResponse.tenants)"
 RESP=$(curl -s -X POST "$BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"$ADMIN_EMAIL\",
-    \"password\": \"$ADMIN_PASSWORD\",
-    \"tenantCode\": \"$TENANT_CODE\"
+    \"password\": \"$ADMIN_PASSWORD\"
   }")
 echo "$RESP"
 ACCESS_TOKEN=$(json_get "$RESP" "token")

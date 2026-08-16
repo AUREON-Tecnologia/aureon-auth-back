@@ -20,29 +20,29 @@ export interface ModuloLegacySeed {
  */
 export const MODULOS_LEGACY_SEED: ModuloLegacySeed[] = [
   {
-    codigo: 'clientes',
-    nombre: 'Clientes',
+    codigo: 'clients',
+    nombre: 'Clients',
     permisos: [
-      { codigo: 'clientes:listar', nombre: 'Listar clientes' },
-      { codigo: 'clientes:crear', nombre: 'Crear clientes' },
-      { codigo: 'clientes:editar', nombre: 'Editar clientes' },
-      { codigo: 'clientes:eliminar', nombre: 'Eliminar clientes' },
+      { codigo: 'clients:list', nombre: 'List clients' },
+      { codigo: 'clients:create', nombre: 'Create clients' },
+      { codigo: 'clients:update', nombre: 'Update clients' },
+      { codigo: 'clients:delete', nombre: 'Delete clients' },
     ],
   },
   {
-    // ORPHANED ON PURPOSE: no controller consumes this today (the "usuarios"
+    // ORPHANED ON PURPOSE: no controller consumes this today (the "users"
     // CRUD was replaced by rbac/membresias). Left in the seed without
     // deleting it because it could not be confirmed whether another service
     // in the ecosystem still consumes it via the global permissions catalog
     // — see ANALISIS-matriz-permisos-auth.md (contracts repo,
     // docus/matrices-permisos/) for the detail.
-    codigo: 'usuarios',
-    nombre: 'Usuarios',
+    codigo: 'users',
+    nombre: 'Users',
     permisos: [
-      { codigo: 'usuarios:listar', nombre: 'Listar usuarios' },
-      { codigo: 'usuarios:crear', nombre: 'Crear usuarios' },
-      { codigo: 'usuarios:editar', nombre: 'Editar usuarios' },
-      { codigo: 'usuarios:desactivar', nombre: 'Desactivar usuarios' },
+      { codigo: 'users:list', nombre: 'List users' },
+      { codigo: 'users:create', nombre: 'Create users' },
+      { codigo: 'users:update', nombre: 'Update users' },
+      { codigo: 'users:deactivate', nombre: 'Deactivate users' },
     ],
   },
   {
@@ -73,14 +73,14 @@ export const MODULOS_LEGACY_SEED: ModuloLegacySeed[] = [
 
 const PERMISOS_POR_ROL_LEGACY: Record<RolNegocio, string[]> = {
   administrador: [
-    'clientes:listar',
-    'clientes:crear',
-    'clientes:editar',
-    'clientes:eliminar',
-    'usuarios:listar',
-    'usuarios:crear',
-    'usuarios:editar',
-    'usuarios:desactivar',
+    'clients:list',
+    'clients:create',
+    'clients:update',
+    'clients:delete',
+    'users:list',
+    'users:create',
+    'users:update',
+    'users:deactivate',
     'roles:list',
     'roles:create',
     'roles:assign-permission',
@@ -93,7 +93,7 @@ const PERMISOS_POR_ROL_LEGACY: Record<RolNegocio, string[]> = {
     'memberships:update',
     'memberships:deactivate',
   ],
-  administrativo: ['clientes:listar', 'clientes:crear', 'clientes:editar'],
+  administrativo: ['clients:list', 'clients:create', 'clients:update'],
   tecnico: [],
   cliente: [],
   sistema: [],

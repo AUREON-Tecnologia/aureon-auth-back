@@ -15,6 +15,7 @@ const buildSessionResult = (): AuthSessionResult => ({
   roleCode: 'administrador',
   permissions: ['clientes:listar'],
   activeModules: ['clientes'],
+  tenants: [{ id: 'tenant-uuid-1', code: 'acme-corp', name: 'Acme Corp' }],
   accessToken: 'access-jwt',
   accessTokenExpiresAt: new Date('2026-01-01T00:30:00.000Z'),
   refreshToken: 'refresh-opaque',
@@ -64,7 +65,7 @@ describe('AuthController', () => {
       const resultado = buildSessionResult();
       authCommandService.login.mockResolvedValue(resultado);
 
-      await controller.login({ email: 'a@b.com', password: 'x', tenantCode: 'acme' } as never, '127.0.0.1', res);
+      await controller.login({ email: 'a@b.com', password: 'x' } as never, '127.0.0.1', res);
 
       expect(cookieService.setSessionCookies).toHaveBeenCalledWith(res, resultado);
     });
