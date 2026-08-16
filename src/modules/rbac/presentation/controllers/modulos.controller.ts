@@ -1,9 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
 import { PlatformBootstrapGuard } from '../../../../common/guards/platform-bootstrap.guard';
-import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../../common/guards/roles.guard';
-import { Roles } from '../../../../common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '../../../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard } from '@aureon/redis-client';
 import { ModulosService } from '../../application/services/modulos.service';
 import { CrearModuloDto } from '../dto/crear-modulo.dto';
 

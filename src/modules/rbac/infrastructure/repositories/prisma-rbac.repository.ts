@@ -75,6 +75,14 @@ export class PrismaRbacRepository implements IRbacRepository {
     return rows.map((r) => this.toTenantModulo(r));
   }
 
+  async listActiveModulesForTenant(tenantId: string): Promise<string[]> {
+    const rows = await this.prisma.tenantModule.findMany({
+      where: { tenantId, isActive: true },
+      select: { module: { select: { code: true } } },
+    });
+    return rows.map((r) => r.module.code);
+  }
+
   // ---- permisos ----
 
   async crearPermiso(data: CrearPermisoData): Promise<Permiso> {
@@ -229,19 +237,64 @@ export class PrismaRbacRepository implements IRbacRepository {
 
   // ---- permisos efectivos ----
 
+  /**
+   * Replaces the `auth.v_user_effective_permissions` view (written against
+   * an old schema where `permissions` was per-tenant) with native Prisma
+   * queries against the current global schema: permissions from the active
+   * membership's role, plus direct overrides ALLOW (add) / DENY (remove),
+   * ignoring already-expired overrides.
+   *
+   * Both the role-derived permissions and the direct overrides are also
+   * filtered by the owning module being active for this tenant
+   * (`tenant_modules.is_active`) — a permission whose module was
+   * deactivated stops being effective on the user's next login/refresh,
+   * even if the role (or a direct ALLOW override) still grants it.
+   */
   async permisosEfectivos(userId: string, tenantId: string): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<{ permission_id: string }[]>`
-      SELECT permission_id FROM auth.v_user_effective_permissions
-      WHERE user_id = ${userId}::uuid AND tenant_id = ${tenantId}::uuid
-    `;
-    if (rows.length === 0) return [];
+    const moduleActiveForTenant = {
+      module: { tenantModules: { some: { tenantId, isActive: true } } },
+    };
 
-    const permisoIds = rows.map((r) => r.permission_id);
-    const permisos = await this.prisma.permission.findMany({
-      where: { id: { in: permisoIds } },
-      select: { code: true },
+    const membership = await this.prisma.userTenantMembership.findUnique({
+      where: { userId_tenantId: { userId, tenantId } },
+      select: {
+        isActive: true,
+        role: {
+          select: {
+            rolePermissions: {
+              where: { permission: { isActive: true, ...moduleActiveForTenant } },
+              select: { permission: { select: { code: true } } },
+            },
+          },
+        },
+      },
     });
-    return permisos.map((p) => p.code);
+
+    const effectivePermissions = new Set<string>(
+      membership?.isActive
+        ? membership.role.rolePermissions.map((rp) => rp.permission.code)
+        : [],
+    );
+
+    const overrides = await this.prisma.userPermission.findMany({
+      where: {
+        userId,
+        tenantId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        permission: moduleActiveForTenant,
+      },
+      select: { effect: true, permission: { select: { code: true } } },
+    });
+
+    for (const override of overrides) {
+      if (override.effect === 'ALLOW') {
+        effectivePermissions.add(override.permission.code);
+      } else if (override.effect === 'DENY') {
+        effectivePermissions.delete(override.permission.code);
+      }
+    }
+
+    return [...effectivePermissions];
   }
 
   async tienePermisoEfectivo(userId: string, tenantId: string, codigoPermiso: string): Promise<boolean> {

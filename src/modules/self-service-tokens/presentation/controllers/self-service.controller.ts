@@ -1,6 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
-import { CurrentUser, JwtPayload } from '../../../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '@aureon/redis-client';
+import { CurrentUser, JwtPayload } from '@aureon/redis-client';
 import { UserTokenService } from '../../application/services/user-token.service';
 import { VerificarEmailDto } from '../dto/verificar-email.dto';
 

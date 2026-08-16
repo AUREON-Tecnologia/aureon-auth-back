@@ -69,6 +69,13 @@ export interface IRbacRepository {
   activarModuloParaTenant(tenantId: string, moduloId: string): Promise<TenantModulo>;
   desactivarModuloParaTenant(tenantId: string, moduloId: string): Promise<void>;
   listarModulosDeTenant(tenantId: string): Promise<TenantModulo[]>;
+  /**
+   * Codigos (Module.code) de los modulos activos para este tenant — usado
+   * por AuthCommandService.emitirSesion() para exponer `activeModules` en
+   * el login response y en el JWT, sin necesitar el rol admin que exige
+   * `listarModulosDeTenant`/`GET /rbac/modulos-tenant`.
+   */
+  listActiveModulesForTenant(tenantId: string): Promise<string[]>;
 
   // permisos (catalogo global, agrupado por modulo)
   crearPermiso(data: CrearPermisoData): Promise<Permiso>;

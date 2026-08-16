@@ -2,14 +2,15 @@ import { AuthSessionResult } from '../../application/commands/auth-command.servi
 import { LoginResponseDto } from '../dto/login-response.dto';
 import { AuthenticatedUserDto } from '../dto/authenticated-user.dto';
 
-export function toLoginResponseDto(resultado: AuthSessionResult): LoginResponseDto {
+export function toLoginResponseDto(result: AuthSessionResult): LoginResponseDto {
   const dto = new LoginResponseDto();
-  dto.token = resultado.accessToken;
+  dto.token = result.accessToken;
   dto.tokenType = 'Bearer';
-  dto.expiresAt = resultado.accessTokenExpiraEn.toISOString();
-  dto.refreshToken = resultado.refreshToken;
-  dto.refreshExpiresAt = resultado.refreshExpiraEn.toISOString();
-  dto.user = AuthenticatedUserDto.desde(resultado.usuario, resultado.tenantId, resultado.rolCodigo);
-  dto.permissions = resultado.permisos;
+  dto.expiresAt = result.accessTokenExpiresAt.toISOString();
+  dto.refreshToken = result.refreshToken;
+  dto.refreshExpiresAt = result.refreshExpiresAt.toISOString();
+  dto.user = AuthenticatedUserDto.desde(result.user, result.tenantId, result.roleCode);
+  dto.permissions = result.permissions;
+  dto.activeModules = result.activeModules;
   return dto;
 }

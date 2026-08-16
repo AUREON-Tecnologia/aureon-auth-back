@@ -9,4 +9,5 @@ export class LoginResponseDto {
   refreshExpiresAt!: string;
   user!: AuthenticatedUserDto;
   permissions!: string[];
+  activeModules!: string[];
 }

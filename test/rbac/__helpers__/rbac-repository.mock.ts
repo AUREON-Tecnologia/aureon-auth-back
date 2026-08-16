@@ -8,6 +8,7 @@ export function buildRbacRepositoryMock(): jest.Mocked<IRbacRepository> {
     activarModuloParaTenant: jest.fn(),
     desactivarModuloParaTenant: jest.fn(),
     listarModulosDeTenant: jest.fn(),
+    listActiveModulesForTenant: jest.fn().mockResolvedValue([]),
     crearPermiso: jest.fn(),
     buscarPermisoPorCodigo: jest.fn(),
     listarPermisos: jest.fn(),
