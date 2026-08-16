@@ -1,5 +1,5 @@
 import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { MENSAJE_PASSWORD_COMPLEJA, REGEX_PASSWORD_COMPLEJA } from '../../../../common/validators/password-policy';
+import { PASSWORD_POLICY_MESSAGE_EN, REGEX_PASSWORD_COMPLEJA } from '../../../../common/validators/password-policy';
 
 export class RegisterDto {
   @IsEmail()
@@ -9,7 +9,7 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
-  @Matches(REGEX_PASSWORD_COMPLEJA, { message: MENSAJE_PASSWORD_COMPLEJA })
+  @Matches(REGEX_PASSWORD_COMPLEJA, { message: PASSWORD_POLICY_MESSAGE_EN })
   password!: string;
 
   @IsString()

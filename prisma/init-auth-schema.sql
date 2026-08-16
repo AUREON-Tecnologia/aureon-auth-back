@@ -172,6 +172,15 @@ BEFORE INSERT OR UPDATE ON auth.user_tenant_memberships
 FOR EACH ROW EXECUTE FUNCTION auth.fn_check_membership_role_tenant();
 
 -- VISTA DE PERMISOS EFECTIVOS
+--
+-- OBSOLETE: this view (and the rest of this script) models `permissions`
+-- as a table per tenant (`p.tenant_id`), a schema that no longer matches
+-- `prisma/schema.prisma` (where `Permission` is a global catalog, without
+-- `tenantId`, tied to a `moduleId`). Effective-permission calculation no
+-- longer queries this view: `PrismaRbacRepository.permisosEfectivos()`
+-- (src/modules/rbac/infrastructure/repositories/prisma-rbac.repository.ts)
+-- does it with native Prisma against the current schema. Do not use this
+-- view as a reference for new code, and do not recreate it against a new DB.
 
 CREATE OR REPLACE VIEW auth.v_user_effective_permissions AS
 WITH

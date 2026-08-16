@@ -1,8 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../../common/guards/roles.guard';
-import { Roles } from '../../../../common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '../../../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard } from '@aureon/redis-client';
+import { PermissionsGuard } from '../../../../common/guards/permissions.guard';
+import { RequirePermission } from '../../../../common/decorators/require-permission.decorator';
 import { MembresiaQueryService } from '../../application/services/membresia-query.service';
 import { MembresiaCommandService } from '../../application/commands/membresia-command.service';
 import { ListarMembresiasQueryDto } from '../dto/listar-membresias-query.dto';
@@ -10,7 +9,7 @@ import { ActualizarMembresiaDto } from '../dto/actualizar-membresia.dto';
 
 /** HU_13 (reemplaza HU_06): gestion administrativa de miembros del tenant del admin autenticado. */
 @Controller('rbac/membresias')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles('administrador')
 export class MembresiasController {
   constructor(
@@ -19,6 +18,7 @@ export class MembresiasController {
   ) {}
 
   @Get()
+  @RequirePermission('memberships:list')
   listar(@Query() query: ListarMembresiasQueryDto, @CurrentUser() user: JwtPayload) {
     return this.membresiaQueryService.listar(
       user.tenantId,
@@ -28,11 +28,13 @@ export class MembresiasController {
   }
 
   @Get(':id')
+  @RequirePermission('memberships:read')
   obtener(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.membresiaQueryService.obtener(id, user.tenantId);
   }
 
   @Patch(':id')
+  @RequirePermission('memberships:update')
   actualizar(
     @Param('id') id: string,
     @Body() dto: ActualizarMembresiaDto,
@@ -42,6 +44,7 @@ export class MembresiasController {
   }
 
   @Delete(':id')
+  @RequirePermission('memberships:deactivate')
   desactivar(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.membresiaCommandService.desactivar(id, user.tenantId, user.sub);
   }

@@ -1,6 +1,16 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { appConfig, jwtConfig, securityConfig, platformConfig, redisConfig, validationSchema } from './config';
+import { CsrfGuard } from '@aureon/redis-client';
+import {
+  appConfig,
+  jwtConfig,
+  securityConfig,
+  platformConfig,
+  redisConfig,
+  cookieConfig,
+  validationSchema,
+} from './config';
 import { AuthModule } from './modules/auth/auth.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -13,7 +23,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, jwtConfig, securityConfig, platformConfig, redisConfig],
+      load: [appConfig, jwtConfig, securityConfig, platformConfig, redisConfig, cookieConfig],
       validationSchema,
       validationOptions: {
         abortEarly: false,
@@ -27,5 +37,6 @@ import { PrismaModule } from './common/prisma/prisma.module';
     SelfServiceTokensModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
 })
 export class AppModule {}

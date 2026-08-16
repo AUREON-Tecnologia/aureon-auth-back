@@ -88,10 +88,10 @@ describe('RbacSeedService', () => {
     expect(mapa.size).toBe(5);
   });
 
-  it('asigna a cada rol los permisos correctos del catalogo (administrador=8, administrativo=3, resto=0)', async () => {
+  it('asigna a cada rol los permisos correctos del catalogo (administrador=19, administrativo=3, resto=0)', async () => {
     await service.sembrarRolesLegacy(TENANT_ID);
 
-    // administrador(8) + administrativo(3) + tecnico(0) + cliente(0) + sistema(0)
-    expect(repo.asignarPermisoARol).toHaveBeenCalledTimes(11);
+    // administrador(8 clientes/usuarios + 11 rbac-core) + administrativo(3) + tecnico(0) + cliente(0) + sistema(0)
+    expect(repo.asignarPermisoARol).toHaveBeenCalledTimes(22);
   });
 });

@@ -3,13 +3,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisModule } from '@aureon/redis-client';
 import { AuditLogService } from './services/audit-log.service';
+import { CookieService } from './services/cookie.service';
 import { parseDurationToMs } from './utils/duration.util';
 
 /**
  * Global: registra JwtModule y RedisModule una sola vez para que JwtService/
- * TokenBlacklistWriterService/TokenBlacklistReaderService esten disponibles
- * en cualquier modulo (auth, rbac, self-service-tokens...) sin que cada uno
- * tenga que volver a registrarlos.
+ * AccessTokenSessionWriterService/AccessTokenSessionReaderService esten
+ * disponibles en cualquier modulo (auth, rbac, self-service-tokens...) sin
+ * que cada uno tenga que volver a registrarlos.
  */
 @Global()
 @Module({
@@ -38,7 +39,7 @@ import { parseDurationToMs } from './utils/duration.util';
       }),
     }),
   ],
-  providers: [AuditLogService],
-  exports: [AuditLogService, JwtModule, RedisModule],
+  providers: [AuditLogService, CookieService],
+  exports: [AuditLogService, CookieService, JwtModule, RedisModule],
 })
 export class CommonModule {}

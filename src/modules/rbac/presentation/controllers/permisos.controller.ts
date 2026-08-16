@@ -1,32 +1,34 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../../common/guards/roles.guard';
-import { Roles } from '../../../../common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '../../../../common/decorators/current-user.decorator';
+import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard } from '@aureon/redis-client';
+import { PermissionsGuard } from '../../../../common/guards/permissions.guard';
+import { RequirePermission } from '../../../../common/decorators/require-permission.decorator';
 import { RbacAdminService } from '../../application/services/rbac-admin.service';
 import { CrearPermisoDto } from '../dto/crear-permiso.dto';
 import { AsignarPermisoDirectoDto } from '../dto/asignar-permiso-directo.dto';
 
 /** Catalogo de permisos: GLOBAL (compartido por todos los tenants), ver CLAUDE.md. */
 @Controller('rbac/permisos')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles('administrador')
 export class PermisosController {
   constructor(private readonly rbacAdminService: RbacAdminService) {}
 
   @Get()
+  @RequirePermission('permissions:list')
   listar() {
     return this.rbacAdminService.listarPermisos();
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermission('permissions:create')
   crear(@Body() dto: CrearPermisoDto) {
     return this.rbacAdminService.crearPermiso(dto);
   }
 
   @Post('usuarios/:userId')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('permissions:assign-direct')
   async asignarDirecto(
     @Param('userId') userId: string,
     @Body() dto: AsignarPermisoDirectoDto,
@@ -45,6 +47,7 @@ export class PermisosController {
 
   @Delete('usuarios/:userId/:permisoId')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('permissions:revoke-direct')
   async quitarDirecto(
     @Param('userId') userId: string,
     @Param('permisoId') permisoId: string,

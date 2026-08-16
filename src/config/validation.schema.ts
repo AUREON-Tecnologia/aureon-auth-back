@@ -19,4 +19,12 @@ export const validationSchema = Joi.object({
   REDIS_PASSWORD: Joi.string().allow('').optional(),
   REDIS_DB: Joi.number().default(0),
   REDIS_KEY_PREFIX: Joi.string().default('identity'),
+  COOKIE_DOMAIN: Joi.string().allow('').optional(),
+  COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('none'),
+  COOKIE_SECURE: Joi.string().valid('true', 'false').default('true'),
+  // Not .required(): cookie.config.ts falls back to the real frontend URL
+  // hardcoded, so the service still boots correctly if this isn't set in
+  // Railway (see that file's comment for why). Still validated as a proper
+  // URI if it IS present, to catch typos.
+  FRONTEND_ORIGIN: Joi.string().uri().optional(),
 });

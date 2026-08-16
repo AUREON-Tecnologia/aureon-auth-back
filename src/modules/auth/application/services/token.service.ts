@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import { JwtPayload } from '../../../../common/decorators/current-user.decorator';
+import { JwtPayload } from '@aureon/redis-client';
 import { parseDurationToMs } from '../../../../common/utils/duration.util';
 
 export interface TokenPayload {
@@ -10,15 +10,17 @@ export interface TokenPayload {
   tenantId: string;
   email: string;
   roles: string[];
+  permissions: string[];
+  activeModules: string[];
 }
 
-export interface AccessTokenGenerado {
+export interface AccessTokenGenerated {
   token: string;
-  expiraEn: Date;
+  expiresAt: Date;
   jti: string;
 }
 
-export interface OpaqueTokenGenerado {
+export interface OpaqueTokenGenerated {
   token: string;
   hash: string;
 }
@@ -30,30 +32,30 @@ export class TokenService {
     private readonly configService: ConfigService,
   ) {}
 
-  generateAccessToken(payload: TokenPayload): AccessTokenGenerado {
+  generateAccessToken(payload: TokenPayload): AccessTokenGenerated {
     const jti = randomUUID();
     const token = this.jwtService.sign({ ...payload, jti });
     const expiresIn = this.configService.get<string>('jwt.expiresIn') ?? '30m';
-    const expiraEn = new Date(Date.now() + parseDurationToMs(expiresIn));
-    return { token, expiraEn, jti };
+    const expiresAt = new Date(Date.now() + parseDurationToMs(expiresIn));
+    return { token, expiresAt, jti };
   }
 
   async verifyAccessToken(token: string): Promise<JwtPayload> {
     const secret = this.configService.get<string>('jwt.secret');
     if (!secret) {
-      throw new Error('JWT secret no configurado');
+      throw new Error('JWT secret not configured');
     }
     return this.jwtService.verifyAsync<JwtPayload>(token, { secret });
   }
 
   /**
-   * Decodifica un access token para efectos de revocacion en logout: acepta
-   * tokens ya expirados (ignoreExpiration) porque lo unico que interesa es
-   * extraer jti/exp para poder blacklistearlo si aun le queda vida util; una
-   * firma invalida o un token malformado simplemente no se puede revocar
-   * (retorna null) sin que eso bloquee el resto del logout.
+   * Decodes an access token for logout purposes: accepts already-expired
+   * tokens (ignoreExpiration) because the only thing that matters is
+   * extracting the jti to delete its Redis session; an invalid signature or
+   * a malformed token simply has no session to delete (returns null)
+   * without that blocking the rest of the logout.
    */
-  decodeParaRevocacion(token: string): (JwtPayload & { exp?: number }) | null {
+  decodeForLogout(token: string): JwtPayload | null {
     const secret = this.configService.get<string>('jwt.secret');
     if (!secret) {
       return null;
@@ -65,8 +67,8 @@ export class TokenService {
     }
   }
 
-  /** HU_01: refresh token opaco (no JWT) — solo se persiste su hash. */
-  generateOpaqueToken(): OpaqueTokenGenerado {
+  /** HU_01: opaque refresh token (not a JWT) — only its hash is persisted. */
+  generateOpaqueToken(): OpaqueTokenGenerated {
     const token = randomBytes(32).toString('hex');
     return { token, hash: this.hashToken(token) };
   }
