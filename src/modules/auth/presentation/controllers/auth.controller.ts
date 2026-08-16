@@ -21,6 +21,7 @@ import {
   JwtAuthGuard,
   JwtPayload,
   REFRESH_TOKEN_COOKIE_NAME,
+  SkipCsrf,
 } from '@aureon/redis-client';
 import { CookieService } from '../../../../common/services/cookie.service';
 import { LoginDto } from '../dto/login.dto';
@@ -43,6 +44,7 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
+  @SkipCsrf()
   async register(
     @Body() dto: RegisterDto,
     @Ip() ip: string,
@@ -65,6 +67,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @SkipCsrf()
   async login(
     @Body() dto: LoginDto,
     @Ip() ip: string,
