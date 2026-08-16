@@ -8,10 +8,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
-import { JwtPayload } from '../decorators/current-user.decorator';
+import { JwtPayload } from '@aureon/redis-client';
 import { IRbacRepository, RBAC_REPOSITORY } from '../../modules/rbac/domain/repositories/rbac.repository.interface';
 
-/** HU_13: autorizacion granular contra v_user_effective_permissions, complementaria a RolesGuard (legacy). */
+/** HU_13: granular authorization via IRbacRepository.tienePermisoEfectivo, complementary to RolesGuard (legacy). */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(

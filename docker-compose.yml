@@ -21,10 +21,11 @@ services:
       retries: 3
       start_period: 20s
 
-  # Infraestructura compartida entre microservicios AUREON (blacklist de tokens,
-  # ver @aureon/redis-client). En un entorno local con varios servicios AUREON
-  # corriendo a la vez, levantar este contenedor una sola vez (aqui o en otro
-  # repo) y apuntar el resto via REDIS_HOST/REDIS_PORT, no duplicarlo.
+  # Infraestructura compartida entre microservicios AUREON (whitelist de
+  # sesiones de access token, ver @aureon/redis-client). En un entorno local
+  # con varios servicios AUREON corriendo a la vez, levantar este contenedor
+  # una sola vez (aqui o en otro repo) y apuntar el resto via
+  # REDIS_HOST/REDIS_PORT, no duplicarlo.
   redis:
     image: redis:7-alpine
     container_name: aureon-redis

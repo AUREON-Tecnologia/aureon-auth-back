@@ -1,6 +1,13 @@
-import { ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { TokenBlacklistWriterService } from '@aureon/redis-client';
+import { AccessTokenSessionWriterService, RedisUnavailableError } from '@aureon/redis-client';
 import * as bcrypt from 'bcryptjs';
 import {
   AUTH_REPOSITORY,
@@ -25,23 +32,24 @@ export interface RegisterInput {
   apellido?: string;
 }
 
-export interface ContextoSesion {
+export interface SessionContext {
   ip?: string;
   userAgent?: string;
 }
 
 export interface AuthSessionResult {
-  usuario: Usuario;
+  user: Usuario;
   tenantId: string;
-  rolCodigo: string;
-  permisos: string[];
+  roleCode: string;
+  permissions: string[];
+  activeModules: string[];
   accessToken: string;
-  accessTokenExpiraEn: Date;
+  accessTokenExpiresAt: Date;
   refreshToken: string;
-  refreshExpiraEn: Date;
+  refreshExpiresAt: Date;
 }
 
-const MENSAJE_CREDENCIALES_INVALIDAS = 'Credenciales invalidas';
+const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials';
 
 @Injectable()
 export class AuthCommandService {
@@ -55,7 +63,7 @@ export class AuthCommandService {
     private readonly tokenService: TokenService,
     private readonly configService: ConfigService,
     private readonly auditLog: AuditLogService,
-    private readonly tokenBlacklist: TokenBlacklistWriterService,
+    private readonly accessTokenSession: AccessTokenSessionWriterService,
   ) {}
 
   /**
@@ -64,15 +72,15 @@ export class AuthCommandService {
    * expone via auto-registro publico en esta ronda (requeriria probar posesion de
    * la cuenta primero); queda como flujo futuro autenticado, no publico.
    */
-  async register(input: RegisterInput, contexto?: ContextoSesion): Promise<AuthSessionResult> {
+  async register(input: RegisterInput, context?: SessionContext): Promise<AuthSessionResult> {
     const tenant = await this.tenantRepository.findByCode(input.tenantCode);
     if (!tenant || !tenant.activo) {
-      throw new NotFoundException({ codigo: 'TENANT_NOT_FOUND', mensaje: 'Tenant no encontrado o inactivo' });
+      throw new NotFoundException({ codigo: 'TENANT_NOT_FOUND', mensaje: 'Tenant not found or inactive' });
     }
 
     const existente = await this.authRepository.findByEmail(input.email);
     if (existente) {
-      throw new ConflictException({ codigo: 'USER_ALREADY_EXISTS', mensaje: 'Ya existe un usuario con ese email' });
+      throw new ConflictException({ codigo: 'USER_ALREADY_EXISTS', mensaje: 'A user with that email already exists' });
     }
 
     const passwordHash = await bcrypt.hash(input.password, AuthCommandService.BCRYPT_ROUNDS);
@@ -93,27 +101,27 @@ export class AuthCommandService {
     }
     await this.rbacRepository.crearMembresia({ userId: user.id, tenantId: tenant.id, rolId: rolDefault.id });
 
-    return this.emitirSesion(user, tenant.id, codigoRolDefault, contexto);
+    return this.emitirSesion(user, tenant.id, codigoRolDefault, context);
   }
 
   async login(
     email: string,
     password: string,
     tenantCode: string,
-    contexto?: ContextoSesion,
+    context?: SessionContext,
   ): Promise<AuthSessionResult> {
     const maxIntentos = this.configService.get<number>('security.maxIntentosFallidos') ?? 5;
     const minutosBloqueo = this.configService.get<number>('security.bloqueoMinutos') ?? 15;
 
     const tenant = await this.tenantRepository.findByCode(tenantCode);
     if (!tenant || !tenant.activo) {
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: MENSAJE_CREDENCIALES_INVALIDAS });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     const user = await this.authRepository.findByEmail(email);
     if (!user) {
       this.auditLog.registrar({ evento: 'LOGIN_FALLIDO', email, tenantId: tenant.id, detalle: { motivo: 'no_existe' } });
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: MENSAJE_CREDENCIALES_INVALIDAS });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     // failed_login_attempts/locked_until son globales al usuario (no por tenant, ver CLAUDE.md).
@@ -130,7 +138,7 @@ export class AuthCommandService {
         tenantId: tenant.id,
         detalle: { motivo: 'inactivo' },
       });
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: MENSAJE_CREDENCIALES_INVALIDAS });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     const userWithHash = await this.authRepository.findByEmailWithPassword(email);
@@ -154,7 +162,7 @@ export class AuthCommandService {
         tenantId: tenant.id,
         detalle: { motivo: 'password_incorrecta' },
       });
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: MENSAJE_CREDENCIALES_INVALIDAS });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     // La password es correcta: solo ahora se revela si pertenece o no al tenant (mismo mensaje genérico si no).
@@ -167,29 +175,29 @@ export class AuthCommandService {
         tenantId: tenant.id,
         detalle: { motivo: 'sin_membresia' },
       });
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: MENSAJE_CREDENCIALES_INVALIDAS });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
     }
 
     await this.authRepository.registrarLoginExitoso(user.id);
     this.auditLog.registrar({ evento: 'LOGIN_EXITOSO', usuarioId: user.id, email, tenantId: tenant.id });
-    return this.emitirSesion(user, tenant.id, membresia.rol.codigo, contexto);
+    return this.emitirSesion(user, tenant.id, membresia.rol.codigo, context);
   }
 
-  async refresh(refreshToken: string, contexto?: ContextoSesion): Promise<AuthSessionResult> {
+  async refresh(refreshToken: string, context?: SessionContext): Promise<AuthSessionResult> {
     const hash = this.tokenService.hashToken(refreshToken);
     const sesion = await this.sessionRepository.findByTokenHash(hash);
 
     if (!sesion || !sesion.activa || sesion.expiraEn.getTime() <= Date.now()) {
       throw new UnauthorizedException({
         codigo: 'INVALID_CREDENTIALS',
-        mensaje: 'Refresh token invalido, expirado o ya utilizado',
+        mensaje: 'Refresh token invalid, expired, or already used',
       });
     }
 
     const user = await this.authRepository.findById(sesion.userId);
     if (!user || !user.puedeAutenticar) {
       await this.sessionRepository.invalidate(sesion.id);
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: 'Usuario no encontrado o inactivo' });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: 'User not found or inactive' });
     }
 
     if (user.bloqueadoHasta && user.bloqueadoHasta.getTime() > Date.now()) {
@@ -199,21 +207,21 @@ export class AuthCommandService {
     const membresia = await this.rbacRepository.buscarMembresia(user.id, sesion.tenantId);
     if (!membresia || !membresia.activo || !membresia.rol) {
       await this.sessionRepository.invalidate(sesion.id);
-      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: 'Membresia inactiva o inexistente' });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: 'Membership inactive or nonexistent' });
     }
 
     // Rotacion: el refresh token usado queda invalidado se use o no una nueva sesion despues.
     await this.sessionRepository.invalidate(sesion.id);
     this.auditLog.registrar({ evento: 'REFRESH_TOKEN', usuarioId: user.id, tenantId: sesion.tenantId });
-    return this.emitirSesion(user, sesion.tenantId, membresia.rol.codigo, contexto);
+    return this.emitirSesion(user, sesion.tenantId, membresia.rol.codigo, context);
   }
 
   /**
    * accessToken es opcional (header Authorization de quien llama, si lo manda):
-   * se usa solo para adelantar en Redis la revocacion del access JWT vigente
-   * (blacklist hasta su exp natural). El cierre de sesion en si (invalidar el
-   * refresh token en Postgres) no depende de el y funciona igual sin el, como
-   * hasta ahora.
+   * se usa solo para borrar de inmediato su sesion en Redis (whitelist), en
+   * vez de esperar a que expire por TTL. El cierre de sesion en si (invalidar
+   * el refresh token en Postgres) no depende de el y funciona igual sin el,
+   * como hasta ahora.
    */
   async logout(refreshToken: string, accessToken?: string): Promise<{ message: string }> {
     const hash = this.tokenService.hashToken(refreshToken);
@@ -224,61 +232,81 @@ export class AuthCommandService {
       this.auditLog.registrar({ evento: 'LOGOUT', usuarioId: sesion.userId, tenantId: sesion.tenantId });
     }
 
-    await this.revocarAccessTokenSiPresente(accessToken);
+    await this.deleteAccessTokenSessionIfPresent(accessToken);
 
-    // Idempotente por contrato: revocar un refresh token ya revocado tambien responde 200.
-    return { message: 'Sesion cerrada correctamente.' };
+    // Idempotente por contrato: cerrar sesion con un refresh token ya invalidado tambien responde 200.
+    return { message: 'Session closed successfully.' };
   }
 
-  private async revocarAccessTokenSiPresente(accessToken?: string): Promise<void> {
+  private async deleteAccessTokenSessionIfPresent(accessToken?: string): Promise<void> {
     if (!accessToken) {
       return;
     }
-    const payload = this.tokenService.decodeParaRevocacion(accessToken);
-    if (!payload?.jti || !payload.exp) {
+    const payload = this.tokenService.decodeForLogout(accessToken);
+    if (!payload?.jti) {
       return;
     }
-    const ttlSegundos = payload.exp - Math.floor(Date.now() / 1000);
-    await this.tokenBlacklist.revoke(payload.jti, ttlSegundos);
+    await this.accessTokenSession.deleteSession(payload.jti);
   }
 
   private async emitirSesion(
     user: Usuario,
     tenantId: string,
-    rolCodigo: string,
-    contexto?: ContextoSesion,
+    roleCode: string,
+    context?: SessionContext,
   ): Promise<AuthSessionResult> {
-    const { token: accessToken, expiraEn: accessTokenExpiraEn } = this.tokenService.generateAccessToken({
+    const [permissions, activeModules] = await Promise.all([
+      this.rbacRepository.permisosEfectivos(user.id, tenantId),
+      this.rbacRepository.listActiveModulesForTenant(tenantId),
+    ]);
+
+    const accessTokenPayload = {
       sub: user.id,
       tenantId,
       email: user.email,
-      roles: [rolCodigo],
-    });
+      roles: [roleCode],
+      permissions,
+      activeModules,
+    };
+    const { token: accessToken, expiresAt: accessTokenExpiresAt, jti } =
+      this.tokenService.generateAccessToken(accessTokenPayload);
+
+    const ttlSeconds = Math.floor((accessTokenExpiresAt.getTime() - Date.now()) / 1000);
+    try {
+      await this.accessTokenSession.saveSession(jti, { ...accessTokenPayload, jti }, ttlSeconds);
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) {
+        throw new ServiceUnavailableException({
+          codigo: 'AUTH_BACKEND_UNAVAILABLE',
+          mensaje: 'Could not register the access token session',
+        });
+      }
+      throw error;
+    }
 
     const { token: refreshToken, hash } = this.tokenService.generateOpaqueToken();
-    const refreshDias = this.configService.get<number>('security.refreshExpiresInDias') ?? 30;
-    const refreshExpiraEn = new Date(Date.now() + refreshDias * 24 * 60 * 60 * 1000);
+    const refreshDays = this.configService.get<number>('security.refreshExpiresInDias') ?? 30;
+    const refreshExpiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000);
 
     await this.sessionRepository.create({
       userId: user.id,
       tenantId,
       tokenHash: hash,
-      expiraEn: refreshExpiraEn,
-      userAgent: contexto?.userAgent ?? null,
-      ipAddress: contexto?.ip ?? null,
+      expiraEn: refreshExpiresAt,
+      userAgent: context?.userAgent ?? null,
+      ipAddress: context?.ip ?? null,
     });
 
-    const permisos = await this.rbacRepository.permisosEfectivos(user.id, tenantId);
-
     return {
-      usuario: user,
+      user,
       tenantId,
-      rolCodigo,
-      permisos,
+      roleCode,
+      permissions,
+      activeModules,
       accessToken,
-      accessTokenExpiraEn,
+      accessTokenExpiresAt,
       refreshToken,
-      refreshExpiraEn,
+      refreshExpiresAt,
     };
   }
 }

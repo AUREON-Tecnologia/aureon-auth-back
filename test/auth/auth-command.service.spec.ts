@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
-import { TokenBlacklistWriterService } from '@aureon/redis-client';
+import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { AccessTokenSessionWriterService, RedisUnavailableError } from '@aureon/redis-client';
 import * as bcrypt from 'bcryptjs';
 import { AuthCommandService } from '../../src/modules/auth/application/commands/auth-command.service';
 import { TokenService } from '../../src/modules/auth/application/services/token.service';
@@ -110,10 +110,10 @@ describe('AuthCommandService', () => {
   let rbacRepo: jest.Mocked<IRbacRepository>;
   let tenantRepo: jest.Mocked<ITenantRepository>;
   let tokenService: TokenService;
-  let tokenBlacklistMock: { revoke: jest.Mock };
+  let accessTokenSessionMock: { saveSession: jest.Mock; deleteSession: jest.Mock };
 
   beforeEach(async () => {
-    tokenBlacklistMock = { revoke: jest.fn() };
+    accessTokenSessionMock = { saveSession: jest.fn(), deleteSession: jest.fn() };
     const authRepoMock: jest.Mocked<IAuthRepository> = {
       findById: jest.fn(),
       findByEmail: jest.fn(),
@@ -174,7 +174,7 @@ describe('AuthCommandService', () => {
         { provide: RBAC_REPOSITORY, useValue: rbacRepoMock },
         { provide: TENANT_REPOSITORY, useValue: tenantRepoMock },
         { provide: AuditLogService, useValue: { registrar: jest.fn() } },
-        { provide: TokenBlacklistWriterService, useValue: tokenBlacklistMock },
+        { provide: AccessTokenSessionWriterService, useValue: accessTokenSessionMock },
       ],
     }).compile();
 
@@ -208,8 +208,8 @@ describe('AuthCommandService', () => {
 
       expect(result.accessToken.split('.')).toHaveLength(3);
       expect(result.refreshToken).toBeDefined();
-      expect(result.usuario.email).toBe(validInput.email);
-      expect(result.rolCodigo).toBe('cliente');
+      expect(result.user.email).toBe(validInput.email);
+      expect(result.roleCode).toBe('cliente');
       expect(rbacRepo.crearMembresia).toHaveBeenCalledWith(
         expect.objectContaining({ userId: created.id, tenantId: TENANT_ID }),
       );
@@ -244,8 +244,24 @@ describe('AuthCommandService', () => {
 
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
-      expect(result.rolCodigo).toBe('administrador');
+      expect(result.roleCode).toBe('administrador');
       expect(authRepo.registrarLoginExitoso).toHaveBeenCalledWith(user.id);
+      expect(accessTokenSessionMock.saveSession).toHaveBeenCalledWith(
+        expect.stringMatching(/^[0-9a-f-]{36}$/),
+        expect.objectContaining({ sub: user.id, tenantId: TENANT_ID }),
+        expect.any(Number),
+      );
+    });
+
+    it('lanza ServiceUnavailableException si no se puede registrar la sesion del access token en Redis', async () => {
+      const user = buildUsuario({ email });
+      const withHash = await buildUsuarioWithPassword({ email }, password);
+      authRepo.findByEmail.mockResolvedValue(user);
+      authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
+      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: user.id }));
+      accessTokenSessionMock.saveSession.mockRejectedValue(new RedisUnavailableError('Redis caido'));
+
+      await expect(service.login(email, password, tenantCode)).rejects.toBeInstanceOf(ServiceUnavailableException);
     });
 
     it('lanza UnauthorizedException si el tenant no existe', async () => {
@@ -366,44 +382,43 @@ describe('AuthCommandService', () => {
 
       const result = await service.logout('refresh-valido');
       expect(sessionRepo.invalidate).toHaveBeenCalledWith(sesion.id);
-      expect(result).toEqual({ message: 'Sesion cerrada correctamente.' });
+      expect(result).toEqual({ message: 'Session closed successfully.' });
     });
 
     it('es idempotente: revocar un refresh token inexistente tambien responde 200 sin error', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(null);
       const result = await service.logout('no-existe');
       expect(sessionRepo.invalidate).not.toHaveBeenCalled();
-      expect(result).toEqual({ message: 'Sesion cerrada correctamente.' });
+      expect(result).toEqual({ message: 'Session closed successfully.' });
     });
 
     it('es idempotente: revocar un refresh token ya revocado no vuelve a invalidar', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(buildSesion({ revocadaEn: new Date() }));
       const result = await service.logout('ya-revocado');
       expect(sessionRepo.invalidate).not.toHaveBeenCalled();
-      expect(result).toEqual({ message: 'Sesion cerrada correctamente.' });
+      expect(result).toEqual({ message: 'Session closed successfully.' });
     });
 
-    it('si viene el access token vigente, lo blacklistea en Redis con el jti y el TTL restante', async () => {
+    it('si viene el access token vigente, borra su sesion en Redis con el jti', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(buildSesion());
-      const { token } = tokenService.generateAccessToken({
+      const { token, jti } = tokenService.generateAccessToken({
         sub: 'usr-uuid-1',
         tenantId: TENANT_ID,
         email: 'user@taller.com',
         roles: ['administrador'],
+        permissions: [],
+        activeModules: [],
       });
 
       await service.logout('refresh-valido', token);
 
-      expect(tokenBlacklistMock.revoke).toHaveBeenCalledWith(expect.any(String), expect.any(Number));
-      const [jti, ttl] = tokenBlacklistMock.revoke.mock.calls[0];
-      expect(jti).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/));
-      expect(ttl).toBeGreaterThan(0);
+      expect(accessTokenSessionMock.deleteSession).toHaveBeenCalledWith(jti);
     });
 
     it('no llama a Redis si no viene access token', async () => {
       sessionRepo.findByTokenHash.mockResolvedValue(buildSesion());
       await service.logout('refresh-valido');
-      expect(tokenBlacklistMock.revoke).not.toHaveBeenCalled();
+      expect(accessTokenSessionMock.deleteSession).not.toHaveBeenCalled();
     });
   });
 });

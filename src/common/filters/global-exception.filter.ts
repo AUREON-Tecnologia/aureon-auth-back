@@ -40,7 +40,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let body: ErrorResponseBody = {
       codigo: 'INTERNAL_SERVER_ERROR',
-      mensaje: 'Error interno del servidor',
+      mensaje: 'Internal server error',
     };
 
     if (exception instanceof HttpException) {
@@ -56,7 +56,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         if (Array.isArray(mensajeCrudo)) {
           body = {
             codigo: (r.codigo as string) ?? CODIGO_POR_ESTADO[status] ?? 'ERROR',
-            mensaje: 'La solicitud no supero las validaciones',
+            mensaje: 'The request failed validation',
             detalles: mensajeCrudo as string[],
           };
         } else {

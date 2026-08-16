@@ -9,7 +9,7 @@ export class AuthQueryService {
   async getById(id: string): Promise<Usuario> {
     const user = await this.authRepository.findById(id);
     if (!user) {
-      throw new NotFoundException({ codigo: 'USER_NOT_FOUND', mensaje: 'Usuario no encontrado' });
+      throw new NotFoundException({ codigo: 'USER_NOT_FOUND', mensaje: 'User not found' });
     }
     return user;
   }
