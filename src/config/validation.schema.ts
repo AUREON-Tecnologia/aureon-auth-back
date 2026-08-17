@@ -27,4 +27,7 @@ export const validationSchema = Joi.object({
   // Railway (see that file's comment for why). Still validated as a proper
   // URI if it IS present, to catch typos.
   FRONTEND_ORIGIN: Joi.string().uri().optional(),
+  // No .default() here on purpose: the real default depends on NODE_ENV,
+  // computed in app.config.ts (open outside 'production', closed in it).
+  CORS_ALLOW_ALL_ORIGINS: Joi.string().valid('true', 'false').optional(),
 });
