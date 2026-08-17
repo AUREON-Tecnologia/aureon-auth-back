@@ -113,6 +113,30 @@ registrado como `APP_GUARD` global en `AppModule`) exige que el header `X-CSRF-T
 la cookie `csrf_token` en cualquier request no-`GET` — solo si esa cookie está presente (double-submit
 cookie; no rompe clientes autenticados por header).
 
+`POST /auth/login` y `POST /auth/register` llevan `@SkipCsrf()` (`@aureon/redis-client` >=0.8.0) —
+**hallazgo 2026-08-16**: como `CsrfGuard` es el único `APP_GUARD` global de este repo, se activaba en
+*cualquier* request no-`GET` que trajera una cookie `csrf_token`, sin importar si el endpoint era
+público. La `csrf_token` no es `httpOnly` y vive ~30 min (mismo TTL que el access token) — un cliente
+(Postman con su cookie jar, o un navegador real si el usuario cerró la pestaña sin hacer logout) podía
+traer una `csrf_token` vieja de una sesión anterior en un login/register nuevo y sin sesión, y el guard
+la rechazaba con `403 CSRF_TOKEN_INVALID` aunque el login fuera perfectamente válido — el estado de
+cookies de una sesión previa no tiene por qué poder bloquear la apertura de una sesión nueva.
+`refresh`/`logout` no llevan `@SkipCsrf()`: ahí sí corresponde exigir CSRF, porque solo son
+alcanzables cuando ya existe una sesión.
+
+**`CORS_ALLOW_ALL_ORIGINS`** (nuevo, 2026-08-17): si es `"true"`, `main.ts` llama a `enableCors`
+con `origin: true` (refleja el `Origin` de cada request) en vez de `cookie.frontendOrigin` — pensado
+para dev, para no tener que hacer coincidir el origin exacto del cliente. El default (`app.config.ts`,
+`corsAllowAllOrigins`) **depende de `NODE_ENV`**, no es `true` a secas: abierto cuando `NODE_ENV !==
+'production'`, cerrado cuando `NODE_ENV === 'production'` — así un deploy que nunca llegue a tener
+esta variable seteada en Railway queda cerrado por default apenas ese entorno tenga `NODE_ENV=production`
+de verdad. Deliberado: el deploy actual (`aureon-auth-back-production.up.railway.app`) tiene
+`NODE_ENV=development` hoy (todavía no existe el cluster productivo real), así que **también queda
+con CORS abierto a cualquier origen** bajo este esquema — aceptado explícitamente por el usuario
+(pre-lanzamiento, sin usuarios finales reales todavía). Revisar esto antes de que haya usuarios reales
+en ese entorno: o se setea `NODE_ENV=production` ahí, o se fuerza `CORS_ALLOW_ALL_ORIGINS=false`
+explícitamente.
+
 **Prerequisitos nuevos:** `cookie-parser` corriendo antes de los guards (`app.use(cookieParser())`
 en `main.ts`) y CORS con `credentials: true` + origin explícito (`FRONTEND_ORIGIN`, no wildcard —
 incompatible con `credentials: true`). Este repo **no tenía CORS configurado en absoluto** antes de

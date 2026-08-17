@@ -19,7 +19,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@aureon/redis-client": "file:vendor/aureon-redis-client-0.7.0.tgz",
+    "@aureon/redis-client": "file:vendor/aureon-redis-client-0.8.0.tgz",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",

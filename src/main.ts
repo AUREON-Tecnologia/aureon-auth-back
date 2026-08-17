@@ -14,8 +14,13 @@ async function bootstrap(): Promise<void> {
   // (JwtAuthGuard/CsrfGuard from @aureon/redis-client) — see its CLAUDE.md.
   app.use(cookieParser());
 
+  // origin: true (not '*') reflects the request's Origin header instead of a
+  // literal wildcard — browsers reject '*' together with credentials: true,
+  // so this is the only way to genuinely allow "any origin" without also
+  // breaking cookies. See app.config.ts for how corsAllowAllOrigins defaults.
+  const allowAllOrigins = configService.get<boolean>('app.corsAllowAllOrigins');
   app.enableCors({
-    origin: configService.get<string>('cookie.frontendOrigin'),
+    origin: allowAllOrigins ? true : configService.get<string>('cookie.frontendOrigin'),
     credentials: true,
   });
 
