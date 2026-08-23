@@ -1,8 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { AccessTokenSessionWriterService, RedisUnavailableError } from '@aureon/redis-client';
+import { NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import {
+  AccessTokenSessionReaderService,
+  AccessTokenSessionWriterService,
+  RedisService,
+  RedisUnavailableError,
+} from '@aureon/redis-client';
 import * as bcrypt from 'bcryptjs';
 import { AuthCommandService } from '../../src/modules/auth/application/commands/auth-command.service';
 import { TokenService } from '../../src/modules/auth/application/services/token.service';
@@ -103,6 +108,22 @@ const buildSesion = (overrides: Partial<Sesion> = {}): Sesion =>
     overrides.creadaEn ?? new Date(),
   );
 
+/** Fake respaldado por un Map: permite probar el flujo real de emitir/consumir el ticket de seleccion sin Redis. */
+function buildRedisServiceMock() {
+  const store = new Map<string, string>();
+  return {
+    get: jest.fn(async (key: string) => store.get(key) ?? null),
+    set: jest.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    del: jest.fn(async (key: string) => {
+      store.delete(key);
+    }),
+    exists: jest.fn(async (key: string) => store.has(key)),
+    getClient: jest.fn(() => null),
+  };
+}
+
 describe('AuthCommandService', () => {
   let service: AuthCommandService;
   let authRepo: jest.Mocked<IAuthRepository>;
@@ -111,9 +132,11 @@ describe('AuthCommandService', () => {
   let tenantRepo: jest.Mocked<ITenantRepository>;
   let tokenService: TokenService;
   let accessTokenSessionMock: { saveSession: jest.Mock; deleteSession: jest.Mock };
+  let accessTokenSessionReaderMock: { getSession: jest.Mock };
 
   beforeEach(async () => {
     accessTokenSessionMock = { saveSession: jest.fn(), deleteSession: jest.fn() };
+    accessTokenSessionReaderMock = { getSession: jest.fn() };
     const authRepoMock: jest.Mocked<IAuthRepository> = {
       findById: jest.fn(),
       findByEmail: jest.fn(),
@@ -131,6 +154,7 @@ describe('AuthCommandService', () => {
       findByTokenHash: jest.fn(),
       invalidate: jest.fn(),
       invalidateAllForUser: jest.fn(),
+      invalidateAllForUserInTenant: jest.fn(),
     };
 
     const rbacRepoMock = buildRbacRepositoryMock();
@@ -175,6 +199,8 @@ describe('AuthCommandService', () => {
         { provide: TENANT_REPOSITORY, useValue: tenantRepoMock },
         { provide: AuditLogService, useValue: { registrar: jest.fn() } },
         { provide: AccessTokenSessionWriterService, useValue: accessTokenSessionMock },
+        { provide: AccessTokenSessionReaderService, useValue: accessTokenSessionReaderMock },
+        { provide: RedisService, useValue: buildRedisServiceMock() },
       ],
     }).compile();
 
@@ -203,6 +229,11 @@ describe('AuthCommandService', () => {
       });
       rbacRepo.buscarRolPorCodigo.mockResolvedValue(buildRol({ codigo: 'cliente' }));
       sessionRepo.create.mockResolvedValue(buildSesion());
+      rbacRepo.permisosEfectivos.mockResolvedValue(['clients:list', 'clients:create']);
+      rbacRepo.getModuleCodesByPermission.mockResolvedValue({
+        'clients:list': 'clients',
+        'clients:create': 'clients',
+      });
 
       const result = await service.register(validInput);
 
@@ -213,6 +244,9 @@ describe('AuthCommandService', () => {
       expect(rbacRepo.crearMembresia).toHaveBeenCalledWith(
         expect.objectContaining({ userId: created.id, tenantId: TENANT_ID }),
       );
+      // permissions plano sigue siendo lo que se firma en el JWT; permissionsByModule es lo nuevo para el body.
+      expect(result.permissions).toEqual(['clients:list', 'clients:create']);
+      expect(result.permissionsByModule).toEqual({ CLIENTS: { CLIENTS: ['LIST', 'CREATE'] } });
     });
 
     it('lanza ConflictException si el email ya existe (en cualquier tenant)', async () => {
@@ -231,38 +265,61 @@ describe('AuthCommandService', () => {
     const email = 'user@taller.com';
     const password = 'Password123!';
 
-    it('camino feliz: devuelve token, refresh y la lista de tenants cuando las credenciales y la membresia son validas', async () => {
+    it('camino feliz: devuelve tenants + selectionToken sin abrir sesion (1 membresia activa)', async () => {
       const user = buildUsuario({ email });
       const withHash = await buildUsuarioWithPassword({ email }, password);
       authRepo.findByEmail.mockResolvedValue(user);
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
       rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([buildMembresia({ userId: user.id })]);
       tenantRepo.findById.mockResolvedValue(buildTenant());
-      sessionRepo.create.mockResolvedValue(buildSesion());
 
       const result = await service.login(email, password);
 
-      expect(result.accessToken).toBeDefined();
-      expect(result.refreshToken).toBeDefined();
-      expect(result.roleCode).toBe('administrador');
       expect(result.tenants).toEqual([{ id: TENANT_ID, code: 'acme-corp', name: 'Acme Corp' }]);
+      expect(result.selectionToken).toEqual(expect.any(String));
       expect(authRepo.registrarLoginExitoso).toHaveBeenCalledWith(user.id);
-      expect(accessTokenSessionMock.saveSession).toHaveBeenCalledWith(
-        expect.stringMatching(/^[0-9a-f-]{36}$/),
-        expect.objectContaining({ sub: user.id, tenantId: TENANT_ID }),
-        expect.any(Number),
-      );
+      expect(accessTokenSessionMock.saveSession).not.toHaveBeenCalled();
+      expect(sessionRepo.create).not.toHaveBeenCalled();
     });
 
-    it('lanza ServiceUnavailableException si no se puede registrar la sesion del access token en Redis', async () => {
+    it('camino feliz: tampoco abre sesion con mas de una membresia activa (mismo comportamiento que con 1)', async () => {
+      const user = buildUsuario({ email });
+      const withHash = await buildUsuarioWithPassword({ email }, password);
+      authRepo.findByEmail.mockResolvedValue(user);
+      authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
+      const otroTenant = buildTenant({ id: 'tenant-uuid-2', codigo: 'otro-tenant', nombre: 'Otro Tenant' });
+      rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([
+        buildMembresia({ userId: user.id }),
+        buildMembresia({ id: 'membresia-uuid-2', userId: user.id, tenantId: otroTenant.id }),
+      ]);
+      tenantRepo.findById.mockImplementation(async (id) => (id === otroTenant.id ? otroTenant : buildTenant()));
+
+      const result = await service.login(email, password);
+
+      expect(result.tenants).toEqual([
+        { id: TENANT_ID, code: 'acme-corp', name: 'Acme Corp' },
+        { id: otroTenant.id, code: otroTenant.codigo, name: otroTenant.nombre },
+      ]);
+      expect(result.selectionToken).toEqual(expect.any(String));
+      expect(accessTokenSessionMock.saveSession).not.toHaveBeenCalled();
+      expect(sessionRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('al emitir un ticket nuevo, invalida el anterior del mismo usuario', async () => {
       const user = buildUsuario({ email });
       const withHash = await buildUsuarioWithPassword({ email }, password);
       authRepo.findByEmail.mockResolvedValue(user);
       authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
       rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([buildMembresia({ userId: user.id })]);
-      accessTokenSessionMock.saveSession.mockRejectedValue(new RedisUnavailableError('Redis caido'));
+      tenantRepo.findById.mockResolvedValue(buildTenant());
 
-      await expect(service.login(email, password)).rejects.toBeInstanceOf(ServiceUnavailableException);
+      const first = await service.login(email, password);
+      await service.login(email, password);
+
+      // el ticket del primer login ya no debe servir para completar el switch-tenant
+      await expect(service.switchTenant(undefined, 'acme-corp', first.selectionToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
     });
 
     it('lanza UnauthorizedException si el usuario no existe', async () => {
@@ -312,6 +369,138 @@ describe('AuthCommandService', () => {
 
       await expect(service.login(email, password)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(authRepo.registrarLoginExitoso).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('switchTenant', () => {
+    const email = 'user@taller.com';
+    const password = 'Password123!';
+
+    /** Emite un ticket real via login(), evitando hardcodear el formato interno de la key de Redis. */
+    const issueTicket = async (userId: string): Promise<string> => {
+      const user = buildUsuario({ id: userId, email });
+      const withHash = await buildUsuarioWithPassword({ id: userId, email }, password);
+      authRepo.findByEmail.mockResolvedValueOnce(user);
+      authRepo.findByEmailWithPassword.mockResolvedValueOnce(withHash);
+      rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValueOnce([buildMembresia({ userId })]);
+      tenantRepo.findById.mockResolvedValueOnce(buildTenant());
+      const { selectionToken } = await service.login(email, password);
+      // switchTenant() resuelve el usuario via authRepository.findById -- lo dejamos listo para ese caso.
+      authRepo.findById.mockResolvedValue(user);
+      return selectionToken;
+    };
+
+    it('modo ticket: camino feliz abre sesion y consume el ticket (de un solo uso)', async () => {
+      const selectionToken = await issueTicket('usr-uuid-1');
+      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: 'usr-uuid-1' }));
+      tenantRepo.findById.mockResolvedValue(buildTenant());
+      sessionRepo.create.mockResolvedValue(buildSesion());
+      rbacRepo.permisosEfectivos.mockResolvedValue(['roles:list', 'permissions:list']);
+      rbacRepo.getModuleCodesByPermission.mockResolvedValue({
+        'roles:list': 'rbac-core',
+        'permissions:list': 'rbac-core',
+      });
+
+      const result = await service.switchTenant(undefined, 'acme-corp', selectionToken);
+
+      expect(result.accessToken).toBeDefined();
+      expect(result.refreshToken).toBeDefined();
+      expect(result.tenantId).toBe(TENANT_ID);
+      expect(sessionRepo.invalidateAllForUserInTenant).not.toHaveBeenCalled();
+      expect(result.permissionsByModule).toEqual({
+        'RBAC-CORE': { ROLES: ['LIST'], PERMISSIONS: ['LIST'] },
+      });
+
+      await expect(service.switchTenant(undefined, 'acme-corp', selectionToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('modo ticket: lanza UnauthorizedException si el selectionToken es invalido o ya fue usado', async () => {
+      await expect(service.switchTenant(undefined, 'acme-corp', 'token-inventado')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(tenantRepo.findByCode).not.toHaveBeenCalled();
+    });
+
+    it('lanza UnauthorizedException si no llega ni sesion existente ni selectionToken', async () => {
+      await expect(service.switchTenant(undefined, 'acme-corp', undefined)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('modo sesion: camino feliz cambia de tenant e invalida de inmediato la sesion anterior', async () => {
+      const user = buildUsuario({ email });
+      const { token: oldAccessToken, jti: oldJti } = tokenService.generateAccessToken({
+        sub: user.id,
+        tenantId: TENANT_ID,
+        email: user.email,
+        roles: ['administrador'],
+        permissions: [],
+        activeModules: [],
+      });
+      accessTokenSessionReaderMock.getSession.mockResolvedValue({
+        sub: user.id,
+        tenantId: TENANT_ID,
+        email: user.email,
+        roles: ['administrador'],
+        permissions: [],
+        activeModules: [],
+        jti: oldJti,
+      });
+      authRepo.findById.mockResolvedValue(user);
+      const otroTenant = buildTenant({ id: 'tenant-uuid-2', codigo: 'otro-tenant', nombre: 'Otro Tenant' });
+      tenantRepo.findByCode.mockResolvedValue(otroTenant);
+      tenantRepo.findById.mockResolvedValue(otroTenant);
+      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: user.id, tenantId: otroTenant.id }));
+      sessionRepo.create.mockResolvedValue(buildSesion({ tenantId: otroTenant.id }));
+
+      const result = await service.switchTenant(oldAccessToken, 'otro-tenant', undefined);
+
+      expect(result.tenantId).toBe(otroTenant.id);
+      expect(sessionRepo.invalidateAllForUserInTenant).toHaveBeenCalledWith(user.id, TENANT_ID);
+      expect(accessTokenSessionMock.deleteSession).toHaveBeenCalledWith(oldJti);
+    });
+
+    it('modo sesion: si el access token es invalido/expirado, cae al selectionToken sin invalidar nada', async () => {
+      const selectionToken = await issueTicket('usr-uuid-1');
+      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: 'usr-uuid-1' }));
+      tenantRepo.findById.mockResolvedValue(buildTenant());
+      sessionRepo.create.mockResolvedValue(buildSesion());
+
+      const result = await service.switchTenant('token-invalido-o-expirado', 'acme-corp', selectionToken);
+
+      expect(result.accessToken).toBeDefined();
+      expect(sessionRepo.invalidateAllForUserInTenant).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si el tenantCode no corresponde a ningun tenant activo', async () => {
+      const selectionToken = await issueTicket('usr-uuid-1');
+      tenantRepo.findByCode.mockResolvedValue(null);
+
+      await expect(
+        service.switchTenant(undefined, 'tenant-inexistente', selectionToken),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('lanza UnauthorizedException si el tenantCode existe pero el usuario no tiene membresia activa ahi', async () => {
+      const selectionToken = await issueTicket('usr-uuid-1');
+      rbacRepo.buscarMembresia.mockResolvedValue(null);
+
+      await expect(service.switchTenant(undefined, 'acme-corp', selectionToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('lanza ServiceUnavailableException si no se puede registrar la sesion del access token en Redis', async () => {
+      const selectionToken = await issueTicket('usr-uuid-1');
+      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: 'usr-uuid-1' }));
+      tenantRepo.findById.mockResolvedValue(buildTenant());
+      accessTokenSessionMock.saveSession.mockRejectedValue(new RedisUnavailableError('Redis caido'));
+
+      await expect(service.switchTenant(undefined, 'acme-corp', selectionToken)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
     });
   });
 

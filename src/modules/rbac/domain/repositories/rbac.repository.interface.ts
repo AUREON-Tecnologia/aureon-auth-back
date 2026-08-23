@@ -82,6 +82,15 @@ export interface IRbacRepository {
   buscarPermisoPorCodigo(codigo: string): Promise<Permiso | null>;
   listarPermisos(): Promise<Permiso[]>;
   asignarPermisoARol(rolId: string, permisoId: string, otorgadoPor?: string | null): Promise<void>;
+  /**
+   * Permission code -> its owning module code, for the ENTIRE global
+   * catalog (small, unpaginated, same criteria listarPermisos() already
+   * uses). Used by AuthCommandService.emitirSesion() to group `permissions`
+   * by module/resource in the response to the frontend (see
+   * group-permissions.util.ts) -- does not affect the flat array signed
+   * into the JWT.
+   */
+  getModuleCodesByPermission(): Promise<Record<string, string>>;
 
   // roles (por tenant)
   crearRol(data: CrearRolData): Promise<Rol>;

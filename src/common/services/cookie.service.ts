@@ -12,10 +12,19 @@ interface SessionCookiesInput {
 }
 
 /**
+ * Local a este repo (no en @aureon/redis-client): ningun otro microservicio
+ * necesita reconocer esta cookie, es un detalle interno del flujo de
+ * seleccion de tenant de Identity. Ver CLAUDE.md, "Seleccion de tenant en
+ * login".
+ */
+export const TENANT_SELECTION_COOKIE_NAME = 'tenant_selection_token';
+export const TENANT_SELECTION_TTL_SECONDS = 300;
+
+/**
  * Sole issuer of the session cookies (access_token/refresh_token/csrf_token,
- * names defined in @aureon/redis-client). See CLAUDE.md, "Autenticacion por
- * cookie" section, for the full design (shared domain, attributes per
- * cookie, CSRF double-submit).
+ * names defined in @aureon/redis-client) and of tenant_selection_token. See
+ * CLAUDE.md, "Autenticacion por cookie" section, for the full design
+ * (shared domain, attributes per cookie, CSRF double-submit).
  */
 @Injectable()
 export class CookieService {
@@ -53,6 +62,20 @@ export class CookieService {
     res.clearCookie(ACCESS_TOKEN_COOKIE_NAME, { ...base, path: '/' });
     res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, { ...base, path: '/auth' });
     res.clearCookie(CSRF_TOKEN_COOKIE_NAME, { ...base, path: '/' });
+  }
+
+  /** Emitida por login: identifica al usuario para POST /auth/switch-tenant sin abrir sesion. */
+  setTenantSelectionCookie(res: Response, selectionToken: string): void {
+    res.cookie(TENANT_SELECTION_COOKIE_NAME, selectionToken, {
+      ...this.baseOptions(),
+      httpOnly: true,
+      path: '/auth/switch-tenant',
+      expires: new Date(Date.now() + TENANT_SELECTION_TTL_SECONDS * 1000),
+    });
+  }
+
+  clearTenantSelectionCookie(res: Response): void {
+    res.clearCookie(TENANT_SELECTION_COOKIE_NAME, { ...this.baseOptions(), path: '/auth/switch-tenant' });
   }
 
   private baseOptions(): Pick<CookieOptions, 'domain' | 'sameSite' | 'secure'> {

@@ -23,14 +23,15 @@ import {
   REFRESH_TOKEN_COOKIE_NAME,
   SkipCsrf,
 } from '@aureon/redis-client';
-import { CookieService } from '../../../../common/services/cookie.service';
+import { CookieService, TENANT_SELECTION_COOKIE_NAME } from '../../../../common/services/cookie.service';
 import { LoginDto } from '../dto/login.dto';
 import { RefreshDto } from '../dto/refresh.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { LogoutDto } from '../dto/logout.dto';
-import { LoginResponseDto } from '../dto/login-response.dto';
+import { SwitchTenantDto } from '../dto/switch-tenant.dto';
+import { LoginResponseDto, LoginTenantsResponseDto } from '../dto/login-response.dto';
 import { AuthenticatedUserDto } from '../dto/authenticated-user.dto';
-import { toLoginResponseDto } from '../mappers/login-response.mapper';
+import { toLoginResponseDto, toLoginTenantsResponseDto } from '../mappers/login-response.mapper';
 
 type RequestWithCookies = Request & { cookies?: Record<string, string | undefined> };
 
@@ -73,9 +74,36 @@ export class AuthController {
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
     @Headers('user-agent') userAgent?: string,
-  ): Promise<LoginResponseDto> {
+  ): Promise<LoginTenantsResponseDto> {
     const resultado = await this.authCommandService.login(dto.email, dto.password, { ip, userAgent });
+    this.cookieService.setTenantSelectionCookie(res, resultado.selectionToken);
+    return toLoginTenantsResponseDto(resultado);
+  }
+
+  @Post('switch-tenant')
+  @HttpCode(HttpStatus.OK)
+  @SkipCsrf()
+  async switchTenant(
+    @Body() dto: SwitchTenantDto,
+    @Ip() ip: string,
+    @Req() req: RequestWithCookies,
+    @Res({ passthrough: true }) res: Response,
+    @Headers('user-agent') userAgent?: string,
+    @Headers('authorization') authHeader?: string,
+  ): Promise<LoginResponseDto> {
+    const existingAccessToken =
+      (authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined) ??
+      req.cookies?.[ACCESS_TOKEN_COOKIE_NAME];
+    const selectionToken = req.cookies?.[TENANT_SELECTION_COOKIE_NAME] ?? dto.selectionToken;
+
+    const resultado = await this.authCommandService.switchTenant(
+      existingAccessToken,
+      dto.tenantCode,
+      selectionToken,
+      { ip, userAgent },
+    );
     this.cookieService.setSessionCookies(res, resultado);
+    this.cookieService.clearTenantSelectionCookie(res);
     return toLoginResponseDto(resultado);
   }
 

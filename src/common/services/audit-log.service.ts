@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 /** HU_10 (auditoria) + HU_13 (migracion multi-tenant): eventos auditables (RNF-007). */
 export type EventoAuditoria =
   | 'LOGIN_EXITOSO'
+  | 'LOGIN_TICKET_EMITIDO'
+  | 'TENANT_CAMBIADO'
   | 'LOGIN_FALLIDO'
   | 'CUENTA_BLOQUEADA'
   | 'LOGOUT'
