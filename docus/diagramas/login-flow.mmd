@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant Frontend
+    participant Backend as Backend (auth-back)
+    participant DB as Base de datos
+    participant Redis
+
+    Frontend->>Backend: Login (email + password)
+    Backend->>DB: Verificar credenciales (existe, activo, no bloqueado, password correcta)
+
+    alt Credenciales incorrectas o cuenta bloqueada
+        DB-->>Backend: No valido
+        Backend-->>Frontend: Error (401 credenciales invalidas, o 423 cuenta bloqueada)
+    else Credenciales correctas
+        DB-->>Backend: Usuario valido
+        Backend->>DB: Buscar a que tenants (empresas) pertenece este usuario
+        DB-->>Backend: Lista de tenants activos
+
+        alt El usuario no pertenece a ningun tenant
+            Backend-->>Frontend: Error 401 (mismo mensaje generico de credenciales invalidas)
+        else Tiene uno o mas tenants
+            Backend->>Redis: Guardar un "ticket" temporal de seleccion (vale 5 minutos, un solo uso)
+            Redis-->>Backend: Ticket guardado
+            Backend-->>Frontend: 200 OK - Lista de tenants + ticket de seleccion
+            Note over Frontend,Backend: Todavia NO se abrio ninguna sesion.<br/>El usuario elige un tenant de la lista y<br/>continua con el segundo paso: "Cambiar de tenant".
+        end
+    end

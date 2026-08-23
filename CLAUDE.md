@@ -149,8 +149,41 @@ público. La `csrf_token` no es `httpOnly` y vive ~30 min (mismo TTL que el acce
 traer una `csrf_token` vieja de una sesión anterior en un login/register nuevo y sin sesión, y el guard
 la rechazaba con `403 CSRF_TOKEN_INVALID` aunque el login fuera perfectamente válido — el estado de
 cookies de una sesión previa no tiene por qué poder bloquear la apertura de una sesión nueva.
-`refresh`/`logout` no llevan `@SkipCsrf()`: ahí sí corresponde exigir CSRF, porque solo son
-alcanzables cuando ya existe una sesión.
+`refresh`/`logout` **sí llevan `@SkipCsrf()` también, desde el 2026-08-23** — ver sección siguiente,
+"CSRF deshabilitado en refresh/logout (deuda técnica)": esto reemplaza la nota anterior, que decía
+que ahí correspondía seguir exigiéndolo.
+
+## CSRF deshabilitado en refresh/logout (deuda técnica, decisión 2026-08-23)
+
+`@SkipCsrf()` se agregó también a `POST /auth/refresh` y `POST /auth/logout` — con esto, **ningún**
+endpoint no-`GET` de este módulo exige `X-CSRF-Token` en la práctica (`register`/`login`/
+`switch-tenant` ya estaban exentos desde antes por la razón de arriba; `GET /auth/me` nunca lo
+necesitó, es un método seguro). El parámetro `CsrfTokenHeader` se dejó declarado en `auth.yaml` para
+`refresh`/`logout`/`switch-tenant` (se acepta si se manda), pero ya no se valida en ninguno de los
+dos.
+
+**Por qué se aceptó este riesgo:** front reportó fricción real integrando el double-submit cookie
+(confundía `httpOnly` de `access_token`/`refresh_token` con `csrf_token`, que sí es legible por JS a
+propósito) y se evaluó el riesgo real de quitar la protección en estos dos endpoints específicos:
+
+- **`logout` sin CSRF → "logout CSRF"**: un sitio de terceros podría forzar el cierre de sesión de un
+  visitante que tenga una sesión activa acá, sin que se entere. Molesto, pero no expone datos ni da
+  acceso a nada — la víctima lo resuelve volviendo a loguearse. Categoría de ataque documentada y
+  consistentemente clasificada como severidad baja en la industria por esta misma razón.
+- **`refresh` sin CSRF**: un tercero podría forzar la rotación del refresh token de la víctima. La
+  respuesta es ciega (CORS no deja leer el body desde otro origen), así que no se filtra el token —
+  el único efecto es que otro cliente que tuviera guardado el refresh token viejo (otra pestaña, una
+  app) deje de poder usarlo. Molestia de sincronización, severidad todavía menor que logout CSRF.
+
+Ninguno de los dos compromete cuentas, filtra datos, ni escala privilegios — por eso se aceptó el
+trade-off. **No se tocó nada de esto para `register`/`login`/`switch-tenant`** (ya estaban exentos
+por otra razón, ver arriba) ni para ningún endpoint fuera de este módulo (`workshop-clients-back`
+sigue con `CsrfGuard` activo tal cual, esto no lo afecta — el guard es compartido pero `@SkipCsrf()`
+es por endpoint, no global).
+
+**Si en el futuro se quiere revertir esto**: quitar `@SkipCsrf()` de `refresh`/`logout` en
+`auth.controller.ts`, y actualizar de vuelta las descripciones de `auth.yaml` que dicen "accepted but
+not enforced".
 
 **`CORS_ALLOW_ALL_ORIGINS`** (nuevo, 2026-08-17): si es `"true"`, `main.ts` llama a `enableCors`
 con `origin: true` (refleja el `Origin` de cada request) en vez de `cookie.frontendOrigin` — pensado
