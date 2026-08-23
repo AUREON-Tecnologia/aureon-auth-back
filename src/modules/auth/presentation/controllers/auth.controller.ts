@@ -109,6 +109,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @SkipCsrf()
   async refresh(
     @Body() dto: RefreshDto,
     @Ip() ip: string,
@@ -130,6 +131,7 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @SkipCsrf()
   async logout(
     @Body() dto: LogoutDto,
     @Req() req: RequestWithCookies,

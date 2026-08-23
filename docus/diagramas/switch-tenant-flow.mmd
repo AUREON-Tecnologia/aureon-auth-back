@@ -1,0 +1,49 @@
+sequenceDiagram
+    autonumber
+    participant Frontend
+    participant Backend as Backend (auth-back)
+    participant DB as Base de datos
+    participant Redis
+
+    Note over Frontend,Redis: El usuario ya eligio con que tenant (empresa) quiere trabajar
+
+    alt Caso 1: Recien hizo login (todavia sin sesion)
+        Frontend->>Backend: Cambiar de tenant (tenant elegido + ticket que dio el login)
+        Backend->>Redis: Verificar que el ticket sea valido y no se haya usado antes
+        alt Ticket invalido, vencido o ya usado
+            Redis-->>Backend: No valido
+            Backend-->>Frontend: Error 401 (debe volver a hacer login)
+        else Ticket valido
+            Redis-->>Backend: Identifica al usuario
+            Backend->>Redis: Eliminar el ticket (de un solo uso, ya no sirve de nuevo)
+        end
+    else Caso 2: Ya tenia una sesion abierta y quiere cambiar de tenant
+        Frontend->>Backend: Cambiar de tenant (tenant elegido, ya autenticado)
+        Backend->>Redis: Verificar que la sesion actual siga activa
+        Redis-->>Backend: Sesion valida - identifica al usuario y al tenant anterior
+    end
+
+    Backend->>DB: Verificar que el tenant elegido exista y este activo
+    alt Tenant no existe o esta inactivo
+        DB-->>Backend: No encontrado
+        Backend-->>Frontend: Error 404
+    else Tenant valido
+        DB-->>Backend: Tenant encontrado
+        Backend->>DB: Verificar que el usuario realmente pertenezca a ese tenant
+        alt El usuario no pertenece a ese tenant
+            DB-->>Backend: Sin membresia
+            Backend-->>Frontend: Error 401 (mismo mensaje generico, nunca revela el motivo real)
+        else El usuario si pertenece
+            DB-->>Backend: Rol y permisos del usuario en ese tenant
+
+            opt Viene del Caso 2 (tenia sesion en otro tenant)
+                Backend->>DB: Cerrar de inmediato la sesion del tenant anterior
+                Backend->>Redis: Eliminar tambien su acceso guardado ahi
+                Note over Backend,Redis: Asi el usuario nunca queda con dos<br/>sesiones activas en dos tenants al mismo tiempo.
+            end
+
+            Backend->>Backend: Generar la sesion nueva (token de acceso + token de renovacion)
+            Backend->>Redis: Guardar el nuevo acceso (para poder validarlo en cada peticion futura)
+            Backend-->>Frontend: 200 OK - Sesion abierta en el tenant elegido<br/>(incluye permisos y modulos activos)
+        end
+    end
