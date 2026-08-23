@@ -1,0 +1,158 @@
+sequenceDiagram
+    autonumber
+    participant Front as Frontend
+    participant Back as auth-back (AuthController)
+    participant DB as PostgreSQL (Prisma)
+    participant Redis as Redis (whitelist sesiones)
+
+    rect rgb(240, 248, 255)
+    Note over Front,Redis: POST /auth/register
+    Front->>Back: email, password, tenantCode
+    Back->>DB: SELECT tenant WHERE code = tenantCode AND activo
+    alt tenant no existe
+        DB-->>Back: null
+        Back-->>Front: 404 TenantNotFound
+    else tenant existe
+        DB-->>Back: tenant
+        Back->>DB: SELECT user WHERE email (global)
+        alt email ya existe
+            DB-->>Back: user
+            Back-->>Front: 409 UserAlreadyExists
+        else email libre
+            DB-->>Back: null
+            Back->>DB: INSERT user + membership(tenant, rol default)
+            DB-->>Back: user creado
+            Back->>Back: firmar JWT (tenantId, permissions, activeModules) + refreshToken opaco
+            Back->>DB: INSERT user_sessions (refresh_token_hash)
+            Back->>Redis: SET identity:access-token:{jti} = payload, TTL=expiresIn
+            Redis-->>Back: OK
+            Back-->>Front: 201 LoginResponse + Set-Cookie x3
+        end
+    end
+    end
+
+    rect rgb(240, 255, 240)
+    Note over Front,Redis: POST /auth/login -- NUNCA abre sesion (decision 2026-08-22)
+    Front->>Back: email, password
+    Back->>DB: SELECT user WHERE email
+    alt usuario no existe, bloqueado o password invalido
+        DB-->>Back: user o null
+        Back-->>Front: 401 InvalidCredentials / 423 LockedAccount
+    else credenciales validas
+        Back->>DB: SELECT membresias activas del usuario
+        alt sin membership activa
+            DB-->>Back: lista vacia
+            Back-->>Front: 401 InvalidCredentials (mensaje generico)
+        else 1+ memberships activas (mismo camino, sin distinguir 1 de N)
+            DB-->>Back: lista de tenants activos
+            Back->>DB: reset intentos fallidos
+            Back->>Redis: GET tenant-selection:user:{userId} (ticket anterior?)
+            opt existia un ticket anterior
+                Redis-->>Back: token viejo
+                Back->>Redis: DEL tenant-selection:token:{viejo}
+            end
+            Back->>Redis: SET tenant-selection:token:{nuevo} = {userId}, TTL 5min
+            Back->>Redis: SET tenant-selection:user:{userId} = {nuevo}, TTL 5min
+            Note over Back,Redis: no se firma JWT, no INSERT user_sessions
+            Back-->>Front: 200 { tenants, selectionToken } + Set-Cookie tenant_selection_token (5 min)
+        end
+    end
+    end
+
+    rect rgb(255, 245, 230)
+    Note over Front,Redis: POST /auth/switch-tenant -- unica operacion que abre sesion (decision 2026-08-22)
+    Front->>Back: tenantCode + selectionToken (modo ticket) O tenantCode solo, ya autenticado (modo sesion)
+    alt llega Authorization/cookie access_token valido
+        Back->>Back: verificar firma/expiracion JWT -> jti, tenantId viejo
+        Back->>Redis: GET identity:access-token:{jti}
+        Redis-->>Back: sesion vigente -> modo sesion resuelto (userId, tenantId viejo)
+    else sin sesion o access token invalido/expirado
+        Back->>Redis: GET tenant-selection:token:{selectionToken}
+        alt ticket invalido/expirado/ya usado
+            Redis-->>Back: nil
+            Back-->>Front: 401 InvalidCredentials
+        else ticket valido
+            Redis-->>Back: {userId}
+            Back->>Redis: DEL tenant-selection:token:{token} + DEL tenant-selection:user:{userId}
+            Note over Back,Redis: modo ticket resuelto (userId) -- de un solo uso
+        end
+    end
+    Back->>DB: SELECT tenant WHERE code = tenantCode AND activo
+    alt tenant no existe
+        DB-->>Back: null
+        Back-->>Front: 404 TenantNotFound
+    else tenant existe
+        DB-->>Back: tenant
+        Back->>DB: buscarMembresia(userId, tenantId)
+        alt sin membership activa en ese tenant
+            DB-->>Back: null
+            Back-->>Front: 401 InvalidCredentials (mismo mensaje generico, nunca revela el motivo)
+        else membership activa
+            DB-->>Back: membership -> rol
+            opt resuelto en modo sesion (habia tenant viejo)
+                Back->>DB: invalidateAllForUserInTenant(userId, tenantId viejo)
+                Back->>Redis: DEL identity:access-token:{jti viejo}
+                Note over Back,DB: la sesion del tenant que se abandona se invalida de inmediato, no se deja expirar sola
+            end
+            Back->>DB: calcular permissions + activeModules (Prisma nativo)
+            DB-->>Back: permissions, activeModules
+            Back->>Back: firmar JWT nuevo + refreshToken opaco
+            Back->>DB: INSERT user_sessions (refresh_token_hash)
+            Back->>Redis: SET identity:access-token:{jti nuevo}, TTL
+            Redis-->>Back: OK
+            Back-->>Front: 200 LoginResponse + Set-Cookie x3 + clear tenant_selection_token
+        end
+    end
+    end
+
+    rect rgb(255, 250, 240)
+    Note over Front,Redis: POST /auth/refresh
+    Front->>Back: refreshToken (cookie o body), X-CSRF-Token si es cookie
+    Back->>DB: SELECT user_sessions WHERE refresh_token_hash
+    alt invalido, expirado o ya reusado
+        DB-->>Back: null o marcado usado
+        Back-->>Front: 401 InvalidCredentials (reuse detection)
+    else valido
+        Back->>DB: invalidar sesion vieja (rotacion)
+        Back->>DB: recalcular membership, permissions, activeModules
+        DB-->>Back: datos actualizados
+        Back->>Back: firmar nuevo JWT + nuevo refreshToken
+        Back->>DB: INSERT nueva user_sessions
+        Back->>Redis: SET identity:access-token:{nuevo jti}, TTL
+        Redis-->>Back: OK
+        Back-->>Front: 200 LoginResponse + Set-Cookie rotadas
+    end
+    end
+
+    rect rgb(255, 240, 245)
+    Note over Front,Redis: POST /auth/logout
+    Front->>Back: refreshToken (cookie o body), Authorization opcional
+    Back->>DB: UPDATE user_sessions SET revoked (idempotente)
+    opt Authorization presente
+        Back->>Back: decode JWT ignorando expiracion -> jti
+        Back->>Redis: DEL identity:access-token:{jti}
+        Redis-->>Back: OK
+    end
+    Back-->>Front: 200 LogoutResponse + limpia 3 cookies
+    end
+
+    rect rgb(245, 245, 255)
+    Note over Front,Redis: GET /auth/me
+    Front->>Back: Authorization Bearer o cookie access_token
+    Back->>Back: verificar firma y expiracion del JWT -> jti
+    Back->>Redis: GET identity:access-token:{jti}
+    alt no existe en whitelist
+        Redis-->>Back: nil
+        Back-->>Front: 401 Unauthorized
+    else sesion vigente
+        Redis-->>Back: payload
+        Back->>DB: SELECT user WHERE id = sub
+        alt usuario no existe
+            DB-->>Back: null
+            Back-->>Front: 404 UserNotFound
+        else existe
+            DB-->>Back: user
+            Back-->>Front: 200 perfil (claims JWT + datos user)
+        end
+    end
+    end

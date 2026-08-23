@@ -1,6 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
-import { CookieService } from '../../src/common/services/cookie.service';
+import {
+  CookieService,
+  TENANT_SELECTION_COOKIE_NAME,
+  TENANT_SELECTION_TTL_SECONDS,
+} from '../../src/common/services/cookie.service';
 import { ACCESS_TOKEN_COOKIE_NAME, CSRF_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME } from '@aureon/redis-client';
 
 const CONFIG: Record<string, unknown> = {
@@ -112,6 +116,41 @@ describe('CookieService', () => {
       expect(res.clearCookie).toHaveBeenCalledWith(
         CSRF_TOKEN_COOKIE_NAME,
         expect.objectContaining({ path: '/', domain: '.aureon.app' }),
+      );
+    });
+  });
+
+  describe('setTenantSelectionCookie', () => {
+    it('sets tenant_selection_token as httpOnly, Path=/auth/switch-tenant, expiring 5 minutes from now', () => {
+      const before = Date.now();
+      service.setTenantSelectionCookie(res as unknown as Response, 'ticket-value');
+      const after = Date.now();
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        TENANT_SELECTION_COOKIE_NAME,
+        'ticket-value',
+        expect.objectContaining({
+          httpOnly: true,
+          path: '/auth/switch-tenant',
+          domain: '.aureon.app',
+          sameSite: 'lax',
+          secure: true,
+        }),
+      );
+      const [, , options] = res.cookie.mock.calls[0] as unknown as [string, string, { expires: Date }];
+      const expiresAt = options.expires.getTime();
+      expect(expiresAt).toBeGreaterThanOrEqual(before + TENANT_SELECTION_TTL_SECONDS * 1000);
+      expect(expiresAt).toBeLessThanOrEqual(after + TENANT_SELECTION_TTL_SECONDS * 1000);
+    });
+  });
+
+  describe('clearTenantSelectionCookie', () => {
+    it('clears tenant_selection_token with matching path/domain attributes', () => {
+      service.clearTenantSelectionCookie(res as unknown as Response);
+
+      expect(res.clearCookie).toHaveBeenCalledWith(
+        TENANT_SELECTION_COOKIE_NAME,
+        expect.objectContaining({ path: '/auth/switch-tenant', domain: '.aureon.app' }),
       );
     });
   });

@@ -7,7 +7,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AccessTokenSessionWriterService, RedisUnavailableError } from '@aureon/redis-client';
+import {
+  AccessTokenSessionReaderService,
+  AccessTokenSessionWriterService,
+  RedisService,
+  RedisUnavailableError,
+} from '@aureon/redis-client';
 import * as bcrypt from 'bcryptjs';
 import {
   AUTH_REPOSITORY,
@@ -21,6 +26,8 @@ import { Usuario } from '../../domain/entities/usuario.entity';
 import { TokenService } from '../services/token.service';
 import { AuditLogService } from '../../../../common/services/audit-log.service';
 import { CuentaBloqueadaException } from '../../../../common/exceptions/cuenta-bloqueada.exception';
+import { TENANT_SELECTION_TTL_SECONDS } from '../../../../common/services/cookie.service';
+import { groupPermissionsByModule, PermissionsByModule } from '../../../../common/utils/group-permissions.util';
 import { IRbacRepository, RBAC_REPOSITORY } from '../../../rbac/domain/repositories/rbac.repository.interface';
 import { Membresia } from '../../../rbac/domain/entities/membresia.entity';
 import { ITenantRepository, TENANT_REPOSITORY } from '../../../tenants/domain/repositories/tenant.repository.interface';
@@ -49,12 +56,25 @@ export interface AuthSessionResult {
   tenantId: string;
   roleCode: string;
   permissions: string[];
+  /** Same permissions as `permissions`, grouped by module/resource for the LoginResponse body -- see group-permissions.util.ts. */
+  permissionsByModule: PermissionsByModule;
   activeModules: string[];
   tenants: TenantSummary[];
   accessToken: string;
   accessTokenExpiresAt: Date;
   refreshToken: string;
   refreshExpiresAt: Date;
+}
+
+/**
+ * Respuesta de AuthCommandService.login() (decision 2026-08-22) — login
+ * nunca abre sesion por si mismo: valida credenciales y devuelve la lista
+ * de tenants activos del usuario mas un selectionToken de corta vida para
+ * completar la apertura de sesion en switchTenant().
+ */
+export interface LoginTenantsResult {
+  tenants: TenantSummary[];
+  selectionToken: string;
 }
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials';
@@ -72,6 +92,8 @@ export class AuthCommandService {
     private readonly configService: ConfigService,
     private readonly auditLog: AuditLogService,
     private readonly accessTokenSession: AccessTokenSessionWriterService,
+    private readonly accessTokenSessionReader: AccessTokenSessionReaderService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -113,17 +135,17 @@ export class AuthCommandService {
   }
 
   /**
-   * Ya no recibe tenantCode: el usuario se identifica solo con email+password,
-   * y el tenant se resuelve a partir de sus membresias activas (la primera,
-   * por fecha de ingreso). Hoy en la practica un usuario tiene una sola
-   * membresia, asi que esto no cambia el comportamiento observable — pero
-   * evita que el cliente deba conocer el tenant de antemano. La lista completa
-   * de tenants del usuario va en `AuthSessionResult.tenants` (via emitirSesion),
-   * pensada para que el frontend pueda ofrecer un selector el dia que un
-   * usuario tenga mas de un tenant; ese flujo de seleccion queda fuera de
-   * alcance por ahora (ver conversacion 2026-08-15).
+   * Nunca abre sesion (decision 2026-08-22, reemplaza los disenos
+   * intermedios del 2026-08-15/08-22): solo valida credenciales y devuelve
+   * la lista de tenants activos del usuario mas un selectionToken de corta
+   * vida (Redis, 5 min, un solo uso). POST /auth/switch-tenant es quien
+   * realmente abre la sesion -- con ese ticket justo despues de login, o
+   * con una sesion ya existente para cambiar de tenant mas adelante. El
+   * frontend siempre da ese segundo paso, incluso con un solo tenant
+   * activo (auto-elegirlo sin mostrar UI es decision de front, no un
+   * atajo de backend). Ver CLAUDE.md, "Seleccion de tenant en login".
    */
-  async login(email: string, password: string, context?: SessionContext): Promise<AuthSessionResult> {
+  async login(email: string, password: string, context?: SessionContext): Promise<LoginTenantsResult> {
     const maxIntentos = this.configService.get<number>('security.maxIntentosFallidos') ?? 5;
     const minutosBloqueo = this.configService.get<number>('security.bloqueoMinutos') ?? 15;
 
@@ -174,8 +196,9 @@ export class AuthCommandService {
 
     // La password es correcta: solo ahora se revela si tiene o no algun tenant (mismo mensaje generico si no).
     const membresias = await this.rbacRepository.listarMembresiasActivasDeUsuario(user.id);
-    const membresiaActiva = membresias.find((m) => m.activo && m.rol);
-    if (!membresiaActiva || !membresiaActiva.rol) {
+    const membresiasConRol = membresias.filter((m) => m.activo && m.rol);
+
+    if (membresiasConRol.length === 0) {
       this.auditLog.registrar({
         evento: 'LOGIN_FALLIDO',
         usuarioId: user.id,
@@ -186,8 +209,153 @@ export class AuthCommandService {
     }
 
     await this.authRepository.registrarLoginExitoso(user.id);
-    this.auditLog.registrar({ evento: 'LOGIN_EXITOSO', usuarioId: user.id, email, tenantId: membresiaActiva.tenantId });
-    return this.emitirSesion(user, membresiaActiva.tenantId, membresiaActiva.rol.codigo, context);
+    const tenants = await this.resolverTenants(membresiasConRol);
+    const selectionToken = await this.issueSelectionTicket(user.id);
+    this.auditLog.registrar({
+      evento: 'LOGIN_TICKET_EMITIDO',
+      usuarioId: user.id,
+      email,
+      detalle: { tenantsActivos: tenants.length },
+    });
+    return { tenants, selectionToken };
+  }
+
+  /**
+   * Unica operacion que abre sesion (decision 2026-08-22). Dos modos,
+   * resueltos automaticamente segun lo que llegue:
+   *  - Modo ticket: sin sesion previa, justo despues de login -- resuelve
+   *    el usuario via selectionToken (Redis, un solo uso).
+   *  - Modo sesion: ya autenticado, cambiando a otro tenant -- resuelve el
+   *    usuario via existingAccessToken (igual que JwtAuthGuard: verifica
+   *    firma/expiracion y confirma contra la whitelist de Redis) e invalida
+   *    de inmediato la sesion del tenant que se abandona.
+   * En ambos casos, tenantCode debe ser una membresia activa real de este
+   * usuario -- nunca solo un tenant existente.
+   */
+  async switchTenant(
+    existingAccessToken: string | undefined,
+    tenantCode: string,
+    selectionToken: string | undefined,
+    context?: SessionContext,
+  ): Promise<AuthSessionResult> {
+    const resolved = await this.resolveSwitchIdentity(existingAccessToken, selectionToken);
+
+    const tenant = await this.tenantRepository.findByCode(tenantCode);
+    if (!tenant || !tenant.activo) {
+      throw new NotFoundException({ codigo: 'TENANT_NOT_FOUND', mensaje: 'Tenant not found or inactive' });
+    }
+
+    const user = await this.authRepository.findById(resolved.userId);
+    if (!user || !user.puedeAutenticar) {
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
+    }
+
+    const membresia = await this.rbacRepository.buscarMembresia(user.id, tenant.id);
+    if (!membresia || !membresia.activo || !membresia.rol) {
+      this.auditLog.registrar({
+        evento: 'LOGIN_FALLIDO',
+        usuarioId: user.id,
+        email: user.email,
+        detalle: { motivo: 'tenant_sin_membresia' },
+      });
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: INVALID_CREDENTIALS_MESSAGE });
+    }
+
+    if (resolved.previousSession) {
+      await this.sessionRepository.invalidateAllForUserInTenant(user.id, resolved.previousSession.tenantId);
+      await this.deleteAccessTokenSessionIfPresent(existingAccessToken);
+      this.auditLog.registrar({
+        evento: 'TENANT_CAMBIADO',
+        usuarioId: user.id,
+        tenantId: resolved.previousSession.tenantId,
+        detalle: { nuevoTenantId: tenant.id },
+      });
+    }
+
+    this.auditLog.registrar({ evento: 'LOGIN_EXITOSO', usuarioId: user.id, email: user.email, tenantId: tenant.id });
+    return this.emitirSesion(user, tenant.id, membresia.rol.codigo, context);
+  }
+
+  /**
+   * Intenta primero resolver por una sesion ya existente (Authorization o
+   * cookie access_token, mismo chequeo que JwtAuthGuard: firma/expiracion
+   * local + whitelist de Redis); si no hay token o es invalido/expirado,
+   * cae al selectionToken. Un RedisUnavailableError de la whitelist SI se
+   * propaga (fail-closed, igual que JwtAuthGuard) -- no se confunde con
+   * "no hay sesion".
+   */
+  private async resolveSwitchIdentity(
+    existingAccessToken: string | undefined,
+    selectionToken: string | undefined,
+  ): Promise<{ userId: string; previousSession?: { tenantId: string } }> {
+    if (existingAccessToken) {
+      try {
+        const payload = await this.tokenService.verifyAccessToken(existingAccessToken);
+        const session = await this.accessTokenSessionReader.getSession(payload.jti);
+        if (session) {
+          return { userId: payload.sub, previousSession: { tenantId: payload.tenantId } };
+        }
+      } catch (error) {
+        if (error instanceof RedisUnavailableError) {
+          throw error;
+        }
+        // Token invalido/expirado: no es una sesion utilizable, cae al selectionToken.
+      }
+    }
+
+    if (selectionToken) {
+      const userId = await this.consumeSelectionTicket(selectionToken);
+      if (userId) {
+        return { userId };
+      }
+    }
+
+    throw new UnauthorizedException({
+      codigo: 'INVALID_CREDENTIALS',
+      mensaje: 'No valid session or selection token',
+    });
+  }
+
+  /**
+   * Emite un ticket de seleccion nuevo para el usuario, borrando el
+   * anterior si existia (evita tickets viejos colgados). Dos keys en
+   * Redis: token->userId (para resolver el ticket que llega) y
+   * userId->token (para poder borrar el anterior al emitir uno nuevo).
+   */
+  private async issueSelectionTicket(userId: string): Promise<string> {
+    const previousToken = await this.redisService.get(this.ticketUserKey(userId));
+    if (previousToken) {
+      await this.redisService.del(this.ticketTokenKey(previousToken));
+    }
+
+    const { token } = this.tokenService.generateOpaqueToken();
+    await this.redisService.set(
+      this.ticketTokenKey(token),
+      JSON.stringify({ userId }),
+      TENANT_SELECTION_TTL_SECONDS,
+    );
+    await this.redisService.set(this.ticketUserKey(userId), token, TENANT_SELECTION_TTL_SECONDS);
+    return token;
+  }
+
+  /** De un solo uso: borra ambas keys al primer intento, sin importar si el tenantCode elegido termina siendo valido. */
+  private async consumeSelectionTicket(token: string): Promise<string | null> {
+    const raw = await this.redisService.get(this.ticketTokenKey(token));
+    if (!raw) {
+      return null;
+    }
+    const { userId } = JSON.parse(raw) as { userId: string };
+    await this.redisService.del(this.ticketTokenKey(token));
+    await this.redisService.del(this.ticketUserKey(userId));
+    return userId;
+  }
+
+  private ticketTokenKey(token: string): string {
+    return `tenant-selection:token:${token}`;
+  }
+
+  private ticketUserKey(userId: string): string {
+    return `tenant-selection:user:${userId}`;
   }
 
   async refresh(refreshToken: string, context?: SessionContext): Promise<AuthSessionResult> {
@@ -262,12 +430,14 @@ export class AuthCommandService {
     roleCode: string,
     context?: SessionContext,
   ): Promise<AuthSessionResult> {
-    const [permissions, activeModules, membresias] = await Promise.all([
+    const [permissions, activeModules, membresias, moduleCodeByPermission] = await Promise.all([
       this.rbacRepository.permisosEfectivos(user.id, tenantId),
       this.rbacRepository.listActiveModulesForTenant(tenantId),
       this.rbacRepository.listarMembresiasActivasDeUsuario(user.id),
+      this.rbacRepository.getModuleCodesByPermission(),
     ]);
     const tenants = await this.resolverTenants(membresias);
+    const permissionsByModule = groupPermissionsByModule(permissions, moduleCodeByPermission);
 
     const accessTokenPayload = {
       sub: user.id,
@@ -311,6 +481,7 @@ export class AuthCommandService {
       tenantId,
       roleCode,
       permissions,
+      permissionsByModule,
       activeModules,
       tenants,
       accessToken,

@@ -1,6 +1,11 @@
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
-/** Solo email+password: el tenant se resuelve por las membresias activas del usuario, ver AuthCommandService.login(). */
+/**
+ * Solo email+password: login (decision 2026-08-22) nunca abre sesion por si
+ * mismo, solo valida credenciales y devuelve tenants+selectionToken. Ver
+ * AuthCommandService.login() y POST /auth/switch-tenant para el resto del
+ * flujo.
+ */
 export class LoginDto {
   @IsEmail()
   @MaxLength(255)

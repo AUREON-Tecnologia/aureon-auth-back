@@ -12,6 +12,7 @@ export function buildRbacRepositoryMock(): jest.Mocked<IRbacRepository> {
     crearPermiso: jest.fn(),
     buscarPermisoPorCodigo: jest.fn(),
     listarPermisos: jest.fn(),
+    getModuleCodesByPermission: jest.fn().mockResolvedValue({}),
     asignarPermisoARol: jest.fn(),
     crearRol: jest.fn(),
     buscarRolPorCodigo: jest.fn(),

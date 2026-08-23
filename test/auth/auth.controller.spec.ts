@@ -1,7 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthController } from '../../src/modules/auth/presentation/controllers/auth.controller';
-import { AuthCommandService, AuthSessionResult } from '../../src/modules/auth/application/commands/auth-command.service';
+import {
+  AuthCommandService,
+  AuthSessionResult,
+  LoginTenantsResult,
+} from '../../src/modules/auth/application/commands/auth-command.service';
 import { AuthQueryService } from '../../src/modules/auth/application/queries/auth-query.service';
 import { CookieService } from '../../src/common/services/cookie.service';
 import { Usuario } from '../../src/modules/auth/domain/entities/usuario.entity';
@@ -14,6 +18,7 @@ const buildSessionResult = (): AuthSessionResult => ({
   tenantId: 'tenant-uuid-1',
   roleCode: 'administrador',
   permissions: ['clientes:listar'],
+  permissionsByModule: { CLIENTES: { CLIENTES: ['LISTAR'] } },
   activeModules: ['clientes'],
   tenants: [{ id: 'tenant-uuid-1', code: 'acme-corp', name: 'Acme Corp' }],
   accessToken: 'access-jwt',
@@ -22,10 +27,17 @@ const buildSessionResult = (): AuthSessionResult => ({
   refreshExpiresAt: new Date('2026-01-31T00:00:00.000Z'),
 });
 
+const buildLoginTenantsResult = (): LoginTenantsResult => ({
+  tenants: [{ id: 'tenant-uuid-1', code: 'acme-corp', name: 'Acme Corp' }],
+  selectionToken: 'selection-token-opaque',
+});
+
 describe('AuthController', () => {
-  let authCommandService: jest.Mocked<Pick<AuthCommandService, 'register' | 'login' | 'refresh' | 'logout'>>;
+  let authCommandService: jest.Mocked<Pick<AuthCommandService, 'register' | 'login' | 'switchTenant' | 'refresh' | 'logout'>>;
   let authQueryService: jest.Mocked<Pick<AuthQueryService, 'getById'>>;
-  let cookieService: jest.Mocked<Pick<CookieService, 'setSessionCookies' | 'clearSessionCookies'>>;
+  let cookieService: jest.Mocked<
+    Pick<CookieService, 'setSessionCookies' | 'clearSessionCookies' | 'setTenantSelectionCookie' | 'clearTenantSelectionCookie'>
+  >;
   let controller: AuthController;
   const res = {} as Response;
 
@@ -33,11 +45,17 @@ describe('AuthController', () => {
     authCommandService = {
       register: jest.fn(),
       login: jest.fn(),
+      switchTenant: jest.fn(),
       refresh: jest.fn(),
       logout: jest.fn(),
     };
     authQueryService = { getById: jest.fn() };
-    cookieService = { setSessionCookies: jest.fn(), clearSessionCookies: jest.fn() };
+    cookieService = {
+      setSessionCookies: jest.fn(),
+      clearSessionCookies: jest.fn(),
+      setTenantSelectionCookie: jest.fn(),
+      clearTenantSelectionCookie: jest.fn(),
+    };
     controller = new AuthController(
       authCommandService as unknown as AuthCommandService,
       authQueryService as unknown as AuthQueryService,
@@ -61,13 +79,78 @@ describe('AuthController', () => {
   });
 
   describe('login', () => {
-    it('sets the session cookies after a successful login', async () => {
-      const resultado = buildSessionResult();
+    it('never opens a session -- sets only the tenant selection cookie and returns tenants+selectionToken', async () => {
+      const resultado = buildLoginTenantsResult();
       authCommandService.login.mockResolvedValue(resultado);
 
-      await controller.login({ email: 'a@b.com', password: 'x' } as never, '127.0.0.1', res);
+      const response = await controller.login({ email: 'a@b.com', password: 'x' } as never, '127.0.0.1', res);
 
+      expect(authCommandService.login).toHaveBeenCalledWith('a@b.com', 'x', expect.anything());
+      expect(cookieService.setTenantSelectionCookie).toHaveBeenCalledWith(res, resultado.selectionToken);
+      expect(cookieService.setSessionCookies).not.toHaveBeenCalled();
+      expect(response).toEqual(resultado);
+    });
+  });
+
+  describe('switchTenant', () => {
+    it('mode ticket: uses the tenant_selection_token cookie over the body, and sets the session cookies on success', async () => {
+      const resultado = buildSessionResult();
+      authCommandService.switchTenant.mockResolvedValue(resultado);
+      const req = { cookies: { tenant_selection_token: 'from-cookie' } } as never;
+
+      const response = await controller.switchTenant(
+        { tenantCode: 'acme-corp', selectionToken: 'from-body' } as never,
+        '127.0.0.1',
+        req,
+        res,
+      );
+
+      expect(authCommandService.switchTenant).toHaveBeenCalledWith(
+        undefined,
+        'acme-corp',
+        'from-cookie',
+        expect.anything(),
+      );
       expect(cookieService.setSessionCookies).toHaveBeenCalledWith(res, resultado);
+      expect(cookieService.clearTenantSelectionCookie).toHaveBeenCalledWith(res);
+      expect(response).toBeDefined();
+    });
+
+    it('mode ticket: falls back to the body when there is no tenant_selection_token cookie', async () => {
+      const resultado = buildSessionResult();
+      authCommandService.switchTenant.mockResolvedValue(resultado);
+      const req = { cookies: {} } as never;
+
+      await controller.switchTenant({ tenantCode: 'acme-corp', selectionToken: 'from-body' } as never, '127.0.0.1', req, res);
+
+      expect(authCommandService.switchTenant).toHaveBeenCalledWith(undefined, 'acme-corp', 'from-body', expect.anything());
+    });
+
+    it('mode session: prefers the Authorization header over the access_token cookie, ignores selectionToken', async () => {
+      const resultado = buildSessionResult();
+      authCommandService.switchTenant.mockResolvedValue(resultado);
+      const req = { cookies: { access_token: 'from-cookie' } } as never;
+
+      await controller.switchTenant(
+        { tenantCode: 'otro-tenant' } as never,
+        '127.0.0.1',
+        req,
+        res,
+        undefined,
+        'Bearer from-header',
+      );
+
+      expect(authCommandService.switchTenant).toHaveBeenCalledWith('from-header', 'otro-tenant', undefined, expect.anything());
+    });
+
+    it('mode session: falls back to the access_token cookie when there is no Authorization header', async () => {
+      const resultado = buildSessionResult();
+      authCommandService.switchTenant.mockResolvedValue(resultado);
+      const req = { cookies: { access_token: 'from-cookie' } } as never;
+
+      await controller.switchTenant({ tenantCode: 'otro-tenant' } as never, '127.0.0.1', req, res);
+
+      expect(authCommandService.switchTenant).toHaveBeenCalledWith('from-cookie', 'otro-tenant', undefined, expect.anything());
     });
   });
 
