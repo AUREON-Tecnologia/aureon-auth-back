@@ -38,6 +38,13 @@ export class PrismaSessionRepository implements ISessionRepository {
     });
   }
 
+  async invalidateAllForUserInTenant(userId: string, tenantId: string): Promise<void> {
+    await this.prisma.userSession.updateMany({
+      where: { userId, tenantId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   private toEntity(row: SesionRow): Sesion {
     return new Sesion(
       row.id,

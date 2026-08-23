@@ -102,6 +102,13 @@ export class PrismaRbacRepository implements IRbacRepository {
     return rows.map((r) => this.toPermiso(r));
   }
 
+  async getModuleCodesByPermission(): Promise<Record<string, string>> {
+    const rows = await this.prisma.permission.findMany({
+      select: { code: true, module: { select: { code: true } } },
+    });
+    return Object.fromEntries(rows.map((r) => [r.code, r.module.code]));
+  }
+
   async asignarPermisoARol(rolId: string, permisoId: string, otorgadoPor?: string | null): Promise<void> {
     await this.prisma.rolePermission.create({
       data: { roleId: rolId, permissionId: permisoId, grantedBy: otorgadoPor ?? null },

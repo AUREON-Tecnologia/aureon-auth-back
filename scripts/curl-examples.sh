@@ -79,12 +79,24 @@ curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "$BASE_URL/auth/register" \
   }"
 
 # ---------------------------------------------------------------------------
-seccion "Login (sin tenantCode desde 2026-08-15; ver LoginResponse.tenants)"
+seccion "Login (decision 2026-08-22: nunca abre sesion, solo tenants + selectionToken)"
 RESP=$(curl -s -X POST "$BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"$ADMIN_EMAIL\",
     \"password\": \"$ADMIN_PASSWORD\"
+  }")
+echo "$RESP"
+SELECTION_TOKEN=$(json_get "$RESP" "selectionToken")
+echo "selectionToken=${SELECTION_TOKEN:0:20}... (5 min, un solo uso)"
+
+# ---------------------------------------------------------------------------
+seccion "Switch tenant (unica operacion que abre sesion; modo ticket, justo despues del login)"
+RESP=$(curl -s -X POST "$BASE_URL/auth/switch-tenant" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"tenantCode\": \"$TENANT_CODE\",
+    \"selectionToken\": \"$SELECTION_TOKEN\"
   }")
 echo "$RESP"
 ACCESS_TOKEN=$(json_get "$RESP" "token")

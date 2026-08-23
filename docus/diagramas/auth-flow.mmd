@@ -1,0 +1,56 @@
+flowchart TD
+
+    subgraph REG["POST /auth/register"]
+        R1["Cliente: email + password + tenantCode"] --> R2{"Email ya existe<br/>en la plataforma?"}
+        R2 -- "Si" --> R3["409 UserAlreadyExists"]
+        R2 -- "No" --> R4{"tenantCode existe<br/>y esta activo?"}
+        R4 -- "No" --> R5["404 TenantNotFound"]
+        R4 -- "Si" --> R6["Crear usuario global<br/>+ membership en tenant"]
+        R6 --> R7["Emitir JWT + refreshToken<br/>tenantId como claim"]
+        R7 --> R8["201 LoginResponse<br/>+ Set-Cookie x3"]
+    end
+
+    subgraph LOG["POST /auth/login"]
+        L1["Cliente: email + password"] --> L2{"Cuenta bloqueada?<br/>failed_login_attempts"}
+        L2 -- "Si" --> L3["423 LockedAccount"]
+        L2 -- "No" --> L4{"Credenciales validas?"}
+        L4 -- "No" --> L5["401 InvalidCredentials<br/>mensaje generico"]
+        L4 -- "Si" --> L6{"Tiene membership<br/>activa?"}
+        L6 -- "No" --> L5
+        L6 -- "Si" --> L7["Resolver tenant activo<br/>+ permissions + activeModules"]
+        L7 --> L8["Emitir JWT + refreshToken"]
+        L8 --> L9["200 LoginResponse<br/>+ Set-Cookie x3"]
+    end
+
+    subgraph REF["POST /auth/refresh"]
+        F1["refreshToken desde<br/>cookie o body"] --> F2{"Cookie access_token<br/>presente?"}
+        F2 -- "Si" --> F3["Requiere X-CSRF-Token"]
+        F2 -- "No" --> F4["Usar refreshToken del body"]
+        F3 --> F5{"refreshToken valido,<br/>no expirado, no reusado?"}
+        F4 --> F5
+        F5 -- "No" --> F6["401 InvalidCredentials<br/>reuse detection"]
+        F5 -- "Cuenta bloqueada" --> F7["423 LockedAccount"]
+        F5 -- "Si" --> F8["Rotar: invalidar viejo,<br/>emitir nuevo par"]
+        F8 --> F9["200 LoginResponse<br/>+ Set-Cookie rotadas"]
+    end
+
+    subgraph OUT["POST /auth/logout"]
+        O1["refreshToken desde<br/>cookie o body"] --> O2["Revocar refreshToken<br/>idempotente"]
+        O2 --> O3{"Access token presente?<br/>header o cookie"}
+        O3 -- "Si" --> O4["Eliminar sesion Redis"]
+        O3 -- "No" --> O5["Solo revoca refresh"]
+        O4 --> O6["200 LogoutResponse<br/>+ limpia 3 cookies"]
+        O5 --> O6
+    end
+
+    subgraph ME["GET /auth/me"]
+        M1["Authorization header<br/>o cookie access_token"] --> M2{"JWT valido?"}
+        M2 -- "No" --> M3["401 Unauthorized"]
+        M2 -- "Si" --> M4{"Usuario aun existe?"}
+        M4 -- "No" --> M5["404 UserNotFound"]
+        M4 -- "Si" --> M6["200 perfil leido<br/>de claims del JWT"]
+    end
+
+    R8 -.-> M1
+    L9 -.-> M1
+    F9 -.-> M1

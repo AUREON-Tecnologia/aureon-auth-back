@@ -61,6 +61,7 @@ describe('UserTokenService', () => {
       findByTokenHash: jest.fn(),
       invalidate: jest.fn(),
       invalidateAllForUser: jest.fn(),
+      invalidateAllForUserInTenant: jest.fn(),
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({

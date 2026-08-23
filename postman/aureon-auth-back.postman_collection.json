@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "aureon-auth-back",
-    "description": "Coleccion para probar aureon-auth-back (multi-tenant RBAC). Autocontenida: no necesita importar un environment aparte, ya trae sus propias variables de coleccion (editables en la pestaña 'Variables' de la coleccion en Postman). Los requests de Login/Crear tenant/Crear rol/Crear permiso/Crear modulo tienen scripts de test que guardan automaticamente los ids/tokens en esas variables para los siguientes requests.",
+    "description": "Coleccion para probar aureon-auth-back (multi-tenant RBAC) contra un servidor local (baseUrl por defecto http://localhost:3001). Importar junto con aureon-auth-back.postman_environment.json y seleccionar el environment 'aureon-auth-back (local)' -- los scripts de test usan pm.environment.set(...), asi que sin un environment activo Postman no puede guardar accessToken/selectionToken/etc. entre requests. Los requests de Login/Switch-tenant/Crear tenant/Crear rol/Crear permiso/Crear modulo guardan automaticamente los ids/tokens que hacen falta para los siguientes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,6 +16,7 @@
     { "key": "adminPassword", "value": "Password123!" },
     { "key": "accessToken", "value": "" },
     { "key": "refreshToken", "value": "" },
+    { "key": "selectionToken", "value": "" },
     { "key": "tenantId", "value": "" },
     { "key": "usuarioAdminId", "value": "" },
     { "key": "moduloId", "value": "" },
@@ -134,9 +135,8 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test('200 ok', () => pm.response.to.have.status(200));",
-                  "pm.environment.set('accessToken', body.token);",
-                  "pm.environment.set('refreshToken', body.refreshToken);",
-                  "pm.environment.set('tenantId', body.usuario.tenantId);"
+                  "pm.environment.set('selectionToken', body.selectionToken);",
+                  "console.log('Tenants disponibles, elegir uno y correr \"Cambiar de tenant (switch-tenant)\":', body.tenants);"
                 ]
               }
             }
@@ -150,7 +150,36 @@
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
             }
-          }
+          },
+          "description": "Decision 2026-08-22: login NUNCA abre sesion (sin cookies de sesion, sin token/refreshToken) -- solo valida credenciales y responde { tenants, selectionToken }. Correr despues 'Cambiar de tenant (switch-tenant)' con el tenantCode elegido para abrir la sesion de verdad."
+        },
+        {
+          "name": "Cambiar de tenant (switch-tenant)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('accessToken', body.token);",
+                  "pm.environment.set('refreshToken', body.refreshToken);",
+                  "pm.environment.set('tenantId', body.user.tenantId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/switch-tenant", "host": ["{{baseUrl}}"], "path": ["auth", "switch-tenant"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantCode\": \"{{tenantCode}}\",\n  \"selectionToken\": \"{{selectionToken}}\"\n}"
+            }
+          },
+          "description": "Unica operacion que abre sesion. Dos modos: (1) recien logueado, sin sesion -- manda selectionToken (el que guardo 'Login'), de un solo uso, expira a los 5 min; (2) ya autenticado (bearer en la coleccion) -- omite selectionToken, cambia de tenant sin volver a loguearse (como cambiar de cuenta en AWS), invalidando de inmediato la sesion del tenant anterior. tenantCode debe ser una membresia activa real del usuario -- si no, 401 InvalidCredentials (nunca revela si el tenant existe)."
         },
         {
           "name": "Refrescar token",

@@ -18,4 +18,6 @@ export interface ISessionRepository {
   invalidate(id: string): Promise<void>;
   /** Usado por password-reset: invalida todas las sesiones activas de un usuario (global, todas sus membresias). */
   invalidateAllForUser(userId: string): Promise<void>;
+  /** Usado por switchTenant (modo 2): invalida solo las sesiones activas del tenant que se abandona, sin tocar las de otros tenants. */
+  invalidateAllForUserInTenant(userId: string, tenantId: string): Promise<void>;
 }
