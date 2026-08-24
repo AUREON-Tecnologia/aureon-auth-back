@@ -41,6 +41,9 @@ export class ModulosController {
   @Post('rbac/modulos-tenant/:moduloId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('administrador')
+  // Deuda tecnica aceptada, decision 2026-08-23 (ver CLAUDE.md, "CSRF deshabilitado en endpoints
+  // de sesion real"). Quitar este decorator es el unico cambio necesario si se revierte.
+  @SkipCsrf()
   @HttpCode(HttpStatus.OK)
   activar(@Param('moduloId') moduloId: string, @CurrentUser() user: JwtPayload) {
     return this.modulosService.activarModuloParaTenant(user.tenantId, moduloId);
@@ -49,6 +52,9 @@ export class ModulosController {
   @Delete('rbac/modulos-tenant/:moduloId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('administrador')
+  // Deuda tecnica aceptada, decision 2026-08-23 (ver CLAUDE.md, "CSRF deshabilitado en endpoints
+  // de sesion real"). Quitar este decorator es el unico cambio necesario si se revierte.
+  @SkipCsrf()
   @HttpCode(HttpStatus.OK)
   async desactivar(
     @Param('moduloId') moduloId: string,
