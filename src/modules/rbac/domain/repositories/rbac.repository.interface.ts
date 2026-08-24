@@ -115,6 +115,10 @@ export interface IRbacRepository {
    */
   listarMembresiasActivasDeUsuario(userId: string): Promise<Membresia[]>;
   actualizarMembresia(id: string, data: ActualizarMembresiaData): Promise<Membresia>;
+  /** Como buscarMembresiaPorId, pero sin filtrar por tenantId -- para los endpoints cross-tenant de /platform/memberships (decision 2026-08-23). */
+  buscarMembresiaPorIdGlobal(id: string): Promise<Membresia | null>;
+  /** Cuenta membresias activas de un tenant cuyo rol tiene ese codigo -- usado para bloquear que un tenant se quede sin ningun administrador activo. */
+  contarMembresiasActivasPorRolCodigo(tenantId: string, rolCodigo: string): Promise<number>;
 
   // permisos directos por usuario (ALLOW/DENY), ahora scoped por tenant
   asignarPermisoDirecto(data: AsignarPermisoDirectoData): Promise<void>;

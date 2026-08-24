@@ -446,6 +446,7 @@ export class AuthCommandService {
       roles: [roleCode],
       permissions,
       activeModules,
+      platformAdmin: user.isPlatformAdmin,
     };
     const { token: accessToken, expiresAt: accessTokenExpiresAt, jti } =
       this.tokenService.generateAccessToken(accessTokenPayload);

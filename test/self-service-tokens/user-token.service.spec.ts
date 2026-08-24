@@ -54,6 +54,8 @@ describe('UserTokenService', () => {
       registrarIntentoFallido: jest.fn(),
       marcarEmailVerificado: jest.fn(),
       actualizarPassword: jest.fn(),
+      setPlatformAdmin: jest.fn(),
+      listarAdministradoresPlataforma: jest.fn(),
     };
 
     const sessionRepoMock: jest.Mocked<ISessionRepository> = {

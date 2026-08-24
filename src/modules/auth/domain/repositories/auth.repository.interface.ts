@@ -32,4 +32,8 @@ export interface IAuthRepository {
   /** Usado por self-service-tokens al verificar email / restablecer password. */
   marcarEmailVerificado(id: string): Promise<void>;
   actualizarPassword(id: string, passwordHash: string): Promise<void>;
+  /** Otorga/revoca el flag de administrador de plataforma (decision 2026-08-23) -- ver CLAUDE.md. */
+  setPlatformAdmin(id: string, valor: boolean): Promise<Usuario>;
+  /** Lista usuarios con el flag de administrador de plataforma activo, para auditar quien lo tiene. */
+  listarAdministradoresPlataforma(): Promise<Usuario[]>;
 }

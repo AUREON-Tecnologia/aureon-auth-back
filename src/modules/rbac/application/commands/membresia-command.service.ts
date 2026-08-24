@@ -2,6 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { IRbacRepository, RBAC_REPOSITORY } from '../../domain/repositories/rbac.repository.interface';
 import { Membresia } from '../../domain/entities/membresia.entity';
 import { AuditLogService } from '../../../../common/services/audit-log.service';
+import { exigirNoUltimoAdministrador } from '../utils/ultimo-administrador.util';
 
 export interface ActualizarMembresiaInput {
   rolId?: string;
@@ -22,7 +23,12 @@ export class MembresiaCommandService {
     input: ActualizarMembresiaInput,
     actorId: string,
   ): Promise<Membresia> {
-    await this.exigirExistente(id, tenantId);
+    const existente = await this.exigirExistente(id, tenantId);
+    const cambiaRol = input.rolId !== undefined && input.rolId !== existente.rolId;
+    const seDesactiva = input.activo === false;
+    if (cambiaRol || seDesactiva) {
+      await exigirNoUltimoAdministrador(this.rbacRepository, existente, tenantId);
+    }
     const actualizada = await this.rbacRepository.actualizarMembresia(id, input);
     this.auditLog.registrar({
       evento: 'MEMBRESIA_ACTUALIZADA',
@@ -40,6 +46,7 @@ export class MembresiaCommandService {
     if (!existente.activo) {
       return existente;
     }
+    await exigirNoUltimoAdministrador(this.rbacRepository, existente, tenantId);
     const actualizada = await this.rbacRepository.actualizarMembresia(id, { activo: false });
     this.auditLog.registrar({
       evento: 'MEMBRESIA_DESACTIVADA',
