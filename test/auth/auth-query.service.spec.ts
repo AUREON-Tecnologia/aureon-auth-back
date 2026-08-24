@@ -25,6 +25,8 @@ describe('AuthQueryService', () => {
       registrarIntentoFallido: jest.fn(),
       marcarEmailVerificado: jest.fn(),
       actualizarPassword: jest.fn(),
+      setPlatformAdmin: jest.fn(),
+      listarAdministradoresPlataforma: jest.fn(),
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({

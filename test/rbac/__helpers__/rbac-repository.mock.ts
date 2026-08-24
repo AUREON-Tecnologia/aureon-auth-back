@@ -20,6 +20,8 @@ export function buildRbacRepositoryMock(): jest.Mocked<IRbacRepository> {
     crearMembresia: jest.fn(),
     buscarMembresia: jest.fn(),
     buscarMembresiaPorId: jest.fn(),
+    buscarMembresiaPorIdGlobal: jest.fn(),
+    contarMembresiasActivasPorRolCodigo: jest.fn(),
     listarMembresias: jest.fn(),
     listarMembresiasActivasDeUsuario: jest.fn().mockResolvedValue([]),
     actualizarMembresia: jest.fn(),

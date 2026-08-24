@@ -14,6 +14,7 @@ import {
 import { AuthModule } from './modules/auth/auth.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { SelfServiceTokensModule } from './modules/self-service-tokens/self-service-tokens.module';
 import { HealthController } from './modules/health/health.controller';
 import { CommonModule } from './common/common.module';
@@ -34,6 +35,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
     RbacModule,
     TenantsModule,
     AuthModule,
+    PlatformModule,
     SelfServiceTokensModule,
   ],
   controllers: [HealthController],
