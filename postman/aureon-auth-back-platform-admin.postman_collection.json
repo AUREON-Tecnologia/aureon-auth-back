@@ -1,0 +1,162 @@
+{
+  "info": {
+    "name": "AUREON - Platform Admin (cross-tenant)",
+    "description": "Coleccion standalone solo para los 6 endpoints nuevos de administracion de plataforma (decision 2026-08-23, ver CLAUDE.md de aureon-auth-back): /platform/admins y /platform/memberships. Autocontenida -- no requiere importar un environment aparte, las variables viven en la propia coleccion (Collection Variables) y los scripts usan pm.collectionVariables.set(...). Contra un servidor local por defecto (baseUrl http://localhost:3001).\n\nOrden recomendado para probar de punta a punta: 1) Otorgar admin de plataforma (a un usuario ya existente) 2) Login + Cambiar de tenant con ESE usuario, para que el JWT firme el claim platformAdmin 3) recien ahi las 3 peticiones de Membresias (cross-tenant) van a pasar el PlatformAdminGuard.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{accessToken}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "platformBootstrapKey", "value": "secreto-de-plataforma-para-pruebas-locales" },
+    { "key": "adminEmail", "value": "admin@postman-demo.com" },
+    { "key": "tenantCode", "value": "postman-demo" },
+    { "key": "accessToken", "value": "" },
+    { "key": "usuarioAdminId", "value": "" },
+    { "key": "membresiaId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Plataforma - Admins",
+      "item": [
+        {
+          "name": "Otorgar admin de plataforma",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 ok', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('usuarioAdminId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/platform/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["platform", "admins"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\"\n}"
+            }
+          },
+          "description": "Bootstrap: gateado por X-Platform-Bootstrap-Key, sin JWT. Requiere que {{adminEmail}} ya exista como usuario global (404 si no) -- sin flujo de invitacion. Idempotente: otorgar a alguien que ya lo es responde 200 igual. Guarda el id devuelto en usuarioAdminId para poder revocarlo despues."
+          },
+        {
+          "name": "Listar admins de plataforma",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/platform/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["platform", "admins"]
+            }
+          },
+          "description": "Array plano (no paginado) de usuarios con isPlatformAdmin=true -- para auditar quien tiene el poder sin ir a la base a mano."
+        },
+        {
+          "name": "Revocar admin de plataforma",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Platform-Bootstrap-Key", "value": "{{platformBootstrapKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/platform/admins/{{usuarioAdminId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["platform", "admins", "{{usuarioAdminId}}"]
+            }
+          },
+          "description": "Desactiva isPlatformAdmin (no borra ni desactiva el usuario global). 404 si el userId no existe."
+        }
+      ]
+    },
+    {
+      "name": "Plataforma - Membresias (cross-tenant)",
+      "item": [
+        {
+          "name": "Dar de alta a un usuario en cualquier tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 creado', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('membresiaId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/platform/memberships",
+              "host": ["{{baseUrl}}"],
+              "path": ["platform", "memberships"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"tenantCode\": \"{{tenantCode}}\",\n  \"roleCode\": \"administrador\"\n}"
+            }
+          },
+          "description": "Cross-tenant: puede dar de alta en CUALQUIER tenant, no solo el propio -- por eso exige el claim platformAdmin en {{accessToken}} en vez del rol administrador de un tenant puntual (heredado del auth bearer de la coleccion). 404 si el usuario/tenant/rol no existen; 409 si ya hay una membresia activa para ese par (una inactiva se reactiva sola). Guarda el id en membresiaId."
+        },
+        {
+          "name": "Cambiar el rol de una membresia (cross-tenant)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/platform/memberships/{{membresiaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["platform", "memberships", "{{membresiaId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleCode\": \"tecnico\"\n}"
+            }
+          },
+          "description": "Variante cross-tenant de PATCH /rbac/membresias/:id -- sin restriccion de tenant. 409 ULTIMO_ADMINISTRADOR si esta membresia es la unica activa con rol administrador en su tenant."
+        },
+        {
+          "name": "Desactivar membresia (cross-tenant)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/platform/memberships/{{membresiaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["platform", "memberships", "{{membresiaId}}"]
+            }
+          },
+          "description": "Baja logica (activo=false), idempotente. Misma proteccion de ultimo administrador que el PATCH."
+        }
+      ]
+    }
+  ]
+}

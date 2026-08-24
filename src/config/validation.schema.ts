@@ -14,7 +14,11 @@ export const validationSchema = Joi.object({
   PLATFORM_BOOTSTRAP_KEY: Joi.string().min(16).required(),
   PLATFORM_DEFAULT_ROLE_CODE: Joi.string().default('cliente'),
   SERVICE_NAME: Joi.string().default('auth-service'),
-  REDIS_HOST: Joi.string().default('localhost'),
+  // .allow(''): un REDIS_HOST vacio es un modo no-op valido (ver
+  // @aureon/redis-lib, RedisModuleOptions) -- RedisService se degrada a
+  // no-op en vez de intentar conectar. AccessTokenSessionWriter/Reader
+  // (whitelist de sesiones) siguen siendo fail-closed igual, esto no las cubre.
+  REDIS_HOST: Joi.string().allow('').default('localhost'),
   REDIS_PORT: Joi.number().default(6379),
   REDIS_PASSWORD: Joi.string().allow('').optional(),
   REDIS_DB: Joi.number().default(0),
