@@ -1,15 +1,21 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard } from '@aureon/redis-client';
+import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard, SkipCsrf } from '@aureon/redis-client';
 import { PermissionsGuard } from '../../../../common/guards/permissions.guard';
 import { RequirePermission } from '../../../../common/decorators/require-permission.decorator';
 import { RbacAdminService } from '../../application/services/rbac-admin.service';
 import { CrearPermisoDto } from '../dto/crear-permiso.dto';
 import { AsignarPermisoDirectoDto } from '../dto/asignar-permiso-directo.dto';
 
-/** Catalogo de permisos: GLOBAL (compartido por todos los tenants), ver CLAUDE.md. */
+/**
+ * Catalogo de permisos: GLOBAL (compartido por todos los tenants), ver CLAUDE.md.
+ * @SkipCsrf() a nivel de clase (deuda tecnica aceptada, decision 2026-08-23 -- ver CLAUDE.md,
+ * "CSRF deshabilitado en endpoints de sesion real"). Quitar este decorator es el unico cambio
+ * necesario si se revierte la decision.
+ */
 @Controller('rbac/permisos')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles('administrador')
+@SkipCsrf()
 export class PermisosController {
   constructor(private readonly rbacAdminService: RbacAdminService) {}
 

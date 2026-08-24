@@ -225,6 +225,42 @@ es por endpoint, no global).
 `auth.controller.ts`, y actualizar de vuelta las descripciones de `auth.yaml` que dicen "accepted but
 not enforced".
 
+## CSRF deshabilitado en endpoints de sesión real (deuda técnica, decisión 2026-08-23)
+
+Extensión deliberada de la deuda técnica de arriba: además de `refresh`/`logout`, se agregó
+`@SkipCsrf()` a **todos** los endpoints mutantes (`POST`/`PATCH`/`DELETE`) que se autentican con una
+sesión JWT real (`bearerAuth`/`cookieAuth`), a nivel de clase salvo donde se anota lo contrario:
+
+- `PlatformMembershipsController` (`/platform/memberships` — POST/PATCH/DELETE)
+- `MembresiasController` (`/rbac/membresias/:id` — PATCH/DELETE)
+- `PermisosController` (`/rbac/permisos` — POST, POST usuarios/:userId, DELETE usuarios/:userId/:permisoId)
+- `RolesController` (`/rbac/roles` — POST, POST :id/permisos)
+- `ModulosController` — solo `POST`/`DELETE rbac/modulos-tenant/:moduloId` (a nivel de método; `POST
+  /modulos` ya estaba exento por la razón de bootstrap, sección de arriba — motivo distinto, mismo
+  decorator)
+- `SelfServiceController` — `POST email/reenviar-verificacion` y `POST mfa/iniciar-configuracion` (a
+  nivel de método; `POST email/verificar` ya estaba exento por ser público, sección de arriba)
+
+**A diferencia de `refresh`/`logout`, acá el riesgo aceptado sí es real y de mayor severidad**: un
+sitio malicioso podría usar la sesión activa (por cookie) de un admin logueado para, sin que se
+entere, dar de alta un usuario en cualquier tenant, cambiar el rol de una membresía, asignar/revocar
+un permiso directo, o crear un rol/permiso — no solo cerrar su sesión o rotar un token. Se aceptó de
+todas formas porque: (a) el escenario de explotación requiere que la víctima tenga sesión activa por
+**cookie** específicamente (un cliente que solo usa `Authorization: Bearer` nunca manda la cookie
+`csrf_token`, así que nunca activa `CsrfGuard` de por sí — el riesgo real es acotado a clientes
+navegador con cookie de sesión, hoy ninguno en producción real todavía); (b) fricción de pruebas real
+detectada en Postman (el cookie jar arrastra una `csrf_token` de una sesión anterior y bloquea
+requests de sesiones distintas, incluso autenticadas por Bearer, ver hallazgo original en
+`/platform/admins`); (c) pre-lanzamiento, sin usuarios finales reales todavía (mismo contexto que la
+decisión de `CORS_ALLOW_ALL_ORIGINS` de abajo).
+
+**Si en el futuro se quiere revertir esto**: quitar `@SkipCsrf()` de cada uno de los 6 controllers/
+métodos listados arriba — es el único cambio necesario, cada uno tiene su propio comentario en el
+código señalando esto. No se tocó `TenantsController`/`PlatformAdminsController`/`POST /modulos`
+(sección "CSRF en endpoints de bootstrap" arriba) ni `AuthController` (`register`/`login`/
+`switch-tenant`/`refresh`/`logout`, secciones arriba) — esos tienen su propia justificación
+independiente de esta decisión y no deben revertirse junto con esta.
+
 **`CORS_ALLOW_ALL_ORIGINS`** (nuevo, 2026-08-17): si es `"true"`, `main.ts` llama a `enableCors`
 con `origin: true` (refleja el `Origin` de cada request) en vez de `cookie.frontendOrigin` — pensado
 para dev, para no tener que hacer coincidir el origin exacto del cliente. El default (`app.config.ts`,
