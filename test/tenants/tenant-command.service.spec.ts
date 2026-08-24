@@ -59,6 +59,8 @@ describe('TenantCommandService', () => {
       registrarIntentoFallido: jest.fn(),
       marcarEmailVerificado: jest.fn(),
       actualizarPassword: jest.fn(),
+      setPlatformAdmin: jest.fn(),
+      listarAdministradoresPlataforma: jest.fn(),
     };
 
     const rbacRepoMock = buildRbacRepositoryMock();

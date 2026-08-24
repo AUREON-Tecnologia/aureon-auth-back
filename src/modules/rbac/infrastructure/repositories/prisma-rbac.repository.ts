@@ -216,6 +216,20 @@ export class PrismaRbacRepository implements IRbacRepository {
     return this.toMembresia(row);
   }
 
+  async buscarMembresiaPorIdGlobal(id: string): Promise<Membresia | null> {
+    const row = await this.prisma.userTenantMembership.findUnique({
+      where: { id },
+      include: membresiaInclude,
+    });
+    return row ? this.toMembresia(row) : null;
+  }
+
+  async contarMembresiasActivasPorRolCodigo(tenantId: string, rolCodigo: string): Promise<number> {
+    return this.prisma.userTenantMembership.count({
+      where: { tenantId, isActive: true, role: { code: rolCodigo } },
+    });
+  }
+
   // ---- permisos directos ----
 
   async asignarPermisoDirecto(data: AsignarPermisoDirectoData): Promise<void> {

@@ -12,6 +12,8 @@ export interface TokenPayload {
   roles: string[];
   permissions: string[];
   activeModules: string[];
+  /** Platform-wide admin flag (decision 2026-08-23) -- read by PlatformAdminGuard, local to this repo, not part of the shared JwtPayload contract. */
+  platformAdmin?: boolean;
 }
 
 export interface AccessTokenGenerated {

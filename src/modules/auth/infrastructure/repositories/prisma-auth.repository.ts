@@ -77,6 +77,16 @@ export class PrismaAuthRepository implements IAuthRepository {
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }
 
+  async setPlatformAdmin(id: string, valor: boolean): Promise<Usuario> {
+    const row = await this.prisma.user.update({ where: { id }, data: { isPlatformAdmin: valor } });
+    return this.toEntity(row);
+  }
+
+  async listarAdministradoresPlataforma(): Promise<Usuario[]> {
+    const rows = await this.prisma.user.findMany({ where: { isPlatformAdmin: true } });
+    return rows.map((row) => this.toEntity(row));
+  }
+
   private toEntity(row: UserRow): Usuario {
     return new Usuario(
       row.id,
@@ -90,6 +100,7 @@ export class PrismaAuthRepository implements IAuthRepository {
       row.lockedUntil,
       row.lastLoginAt,
       row.createdAt,
+      row.isPlatformAdmin,
     );
   }
 

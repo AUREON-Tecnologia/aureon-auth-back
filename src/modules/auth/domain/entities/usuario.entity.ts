@@ -11,6 +11,8 @@ export class Usuario {
     public readonly bloqueadoHasta: Date | null,
     public readonly ultimoAcceso: Date | null,
     public readonly fechaCreacion: Date,
+    /** Platform-wide admin flag (decision 2026-08-23) -- not a tenant role, see CLAUDE.md. Default so existing call sites (positional) keep compiling. */
+    public readonly isPlatformAdmin: boolean = false,
   ) {}
 
   /** is_active=true Y no soft-eliminado. */
