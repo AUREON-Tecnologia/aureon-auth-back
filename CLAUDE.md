@@ -173,6 +173,26 @@ cookies de una sesión previa no tiene por qué poder bloquear la apertura de un
 "CSRF deshabilitado en refresh/logout (deuda técnica)": esto reemplaza la nota anterior, que decía
 que ahí correspondía seguir exigiéndolo.
 
+## CSRF en endpoints de bootstrap (`X-Platform-Bootstrap-Key`) — `@SkipCsrf()`, decisión 2026-08-23
+
+`TenantsController` (`/tenants`, a nivel de clase), `PlatformAdminsController` (`/platform/admins`,
+a nivel de clase) y `ModulosController.crear()` (`POST /modulos`, a nivel de método — el resto de
+rutas de ese controller sí usan sesión JWT real) llevan `@SkipCsrf()`. Hallazgo: al probar
+`POST /platform/admins` desde Postman justo después de haber probado `login`/`switch-tenant` en la
+misma sesión de Postman, `CsrfGuard` rechazaba la request con `403 CSRF_TOKEN_INVALID` — el cookie
+jar de Postman traía una `csrf_token` de la sesión anterior, y `CsrfGuard` la exige en cualquier
+request no-`GET` **si esa cookie está presente**, sin importar que el endpoint no tenga nada que ver
+con sesiones por cookie.
+
+Estos tres endpoints se autentican exclusivamente con el secreto compartido
+(`X-Platform-Bootstrap-Key`) — nunca leen ni dependen de la cookie de sesión. El estado de cookies
+de una sesión completamente distinta no debe poder bloquear una operación de bootstrap: mismo
+principio que ya se aplicó a `login`/`register`/`switch-tenant` (ver más abajo), extendido acá a
+"cualquier endpoint que no se autentica por cookie no debe poder ser bloqueado por el estado de una
+cookie". `PlatformMembershipsController` (`/platform/memberships`) **no** lleva este decorator —
+ese sí abre con una sesión JWT real (`bearerAuth`/`cookieAuth`), así que CSRF sigue siendo relevante
+ahí, igual que en `/rbac/membresias`.
+
 ## CSRF deshabilitado en refresh/logout (deuda técnica, decisión 2026-08-23)
 
 `@SkipCsrf()` se agregó también a `POST /auth/refresh` y `POST /auth/logout` — con esto, **ningún**

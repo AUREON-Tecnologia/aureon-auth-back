@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
 import { PlatformBootstrapGuard } from '../../../../common/guards/platform-bootstrap.guard';
-import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard } from '@aureon/redis-client';
+import { CurrentUser, JwtAuthGuard, JwtPayload, Roles, RolesGuard, SkipCsrf } from '@aureon/redis-client';
 import { ModulosService } from '../../application/services/modulos.service';
 import { CrearModuloDto } from '../dto/crear-modulo.dto';
 
@@ -16,6 +16,9 @@ export class ModulosController {
 
   @Post('modulos')
   @UseGuards(PlatformBootstrapGuard)
+  // Bootstrap por secreto, no por cookie de sesion -- una csrf_token vieja de otra sesion no debe
+  // poder bloquear esto (mismo hallazgo 2026-08-23 que TenantsController/PlatformAdminsController).
+  @SkipCsrf()
   @HttpCode(HttpStatus.CREATED)
   crear(@Body() dto: CrearModuloDto) {
     return this.modulosService.crearModulo(dto);
