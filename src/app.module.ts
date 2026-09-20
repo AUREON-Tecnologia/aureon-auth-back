@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, RouterModule } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { CsrfGuard } from '@aureon/redis-client';
 import {
@@ -32,11 +32,18 @@ import { PrismaModule } from './common/prisma/prisma.module';
     }),
     CommonModule,
     PrismaModule,
+    AuthModule,
+    SelfServiceTokensModule,
+    // Módulos con prefijo /auth en el gateway — los controllers no cambian
     RbacModule,
     TenantsModule,
-    AuthModule,
     PlatformModule,
-    SelfServiceTokensModule,
+    RouterModule.register([
+      {
+        path: 'auth',
+        children: [RbacModule, TenantsModule, PlatformModule],
+      },
+    ]),
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
