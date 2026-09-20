@@ -16,7 +16,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { SelfServiceTokensModule } from './modules/self-service-tokens/self-service-tokens.module';
-import { HealthController } from './modules/health/health.controller';
+import { HealthModule } from './modules/health/health.module';
 import { CommonModule } from './common/common.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 
@@ -38,14 +38,14 @@ import { PrismaModule } from './common/prisma/prisma.module';
     RbacModule,
     TenantsModule,
     PlatformModule,
+    HealthModule,
     RouterModule.register([
       {
         path: 'auth',
-        children: [RbacModule, TenantsModule, PlatformModule],
+        children: [RbacModule, TenantsModule, PlatformModule, HealthModule],
       },
     ]),
   ],
-  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: CsrfGuard }],
 })
 export class AppModule {}

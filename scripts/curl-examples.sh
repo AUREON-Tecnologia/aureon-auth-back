@@ -41,7 +41,7 @@ seccion() { echo; echo "==================== $1 ===================="; }
 
 # ---------------------------------------------------------------------------
 seccion "Health check"
-curl -s -w "\nHTTP_STATUS:%{http_code}\n" "$BASE_URL/health"
+curl -s -w "\nHTTP_STATUS:%{http_code}\n" "$BASE_URL/auth/health"
 
 # ---------------------------------------------------------------------------
 seccion "Crear tenant (bootstrap, protegido por X-Platform-Bootstrap-Key)"

@@ -24,7 +24,7 @@ Forma parte de la arquitectura de microservicios descrita en `BACKEND/GUIA_ARQUI
 
 | Método | Ruta | Auth | Descripción |
 |--------|------|------|-------------|
-| GET | /health | No | Health check |
+| GET | /auth/health | No | Health check |
 | POST | /auth/register | No | Crear usuario |
 | POST | /auth/login | No | Login |
 | POST | /auth/refresh | No | Renovar token |
