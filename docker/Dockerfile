@@ -6,11 +6,11 @@ COPY package*.json ./
 COPY tsconfig*.json ./
 COPY nest-cli.json ./
 COPY prisma ./prisma
+COPY vendor ./vendor
 
 RUN npm ci
 
 COPY src ./src
-COPY test ./test
 
 RUN npm run build
 
@@ -22,7 +22,8 @@ ENV NODE_ENV=production
 
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm ci --omit=dev && npm cache clean --force
+COPY vendor ./vendor
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 # El cliente de Prisma ya generado en el builder (npm ci --omit=dev no instala
 # la CLI de prisma, que es devDependency — se reutiliza el output generado ahi).
