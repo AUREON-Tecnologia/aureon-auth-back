@@ -34,7 +34,7 @@
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+            "url": { "raw": "{{baseUrl}}/auth/health", "host": ["{{baseUrl}}"], "path": ["auth", "health"] }
           }
         }
       ]
