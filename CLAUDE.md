@@ -217,9 +217,11 @@ propósito) y se evaluó el riesgo real de quitar la protección en estos dos en
 
 Ninguno de los dos compromete cuentas, filtra datos, ni escala privilegios — por eso se aceptó el
 trade-off. **No se tocó nada de esto para `register`/`login`/`switch-tenant`** (ya estaban exentos
-por otra razón, ver arriba) ni para ningún endpoint fuera de este módulo (`workshop-clients-back`
-sigue con `CsrfGuard` activo tal cual, esto no lo afecta — el guard es compartido pero `@SkipCsrf()`
-es por endpoint, no global).
+por otra razón, ver arriba) ni para ningún endpoint fuera de este repo (el guard es compartido pero
+`@SkipCsrf()` es por endpoint/clase, no global — cada repo decide el suyo). **Actualización
+2026-09-24**: `workshop-clients-back` adoptó la misma decisión para `ClientsController` (mismo
+hallazgo de cookie jar con `csrf_token` vieja) — ver su propio `CLAUDE.md`, "CSRF deshabilitado en
+`ClientsController`".
 
 **Si en el futuro se quiere revertir esto**: quitar `@SkipCsrf()` de `refresh`/`logout` en
 `auth.controller.ts`, y actualizar de vuelta las descripciones de `auth.yaml` que dicen "accepted but
