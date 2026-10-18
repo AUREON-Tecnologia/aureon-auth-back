@@ -20,7 +20,12 @@ export type EventoAuditoria =
   | 'EMAIL_VERIFICADO'
   | 'PASSWORD_RESET_SOLICITADO'
   | 'PASSWORD_RESET_COMPLETADO'
-  | 'MFA_SETUP_INICIADO';
+  | 'MFA_SETUP_INICIADO'
+  | 'TENANT_TERMINADO'
+  | 'TENANT_REACTIVADO'
+  | 'TENANT_EXPORTADO'
+  | 'TENANT_PURGA_INICIADA'
+  | 'TENANT_PURGADO';
 
 export interface RegistroAuditoria {
   evento: EventoAuditoria;

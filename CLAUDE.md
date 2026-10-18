@@ -293,6 +293,20 @@ Identity es el único servicio con permiso de escritura sobre `identity:access-t
 
 **Desde v0.4.0** el paquete también exporta `RolesGuard`/`@Roles()` (autorización por `x-roles`, antes duplicada a mano en `common/guards/roles.guard.ts` de este repo — esa copia local se borró, ahora se importa directo de `@aureon/redis-client`).
 
+## Fin de contrato de un tenant (offboarding, decisión 2026-10-18, implementado)
+
+Cumple la política de datos v1.1 (sección 9: devolver o eliminar los datos de una empresa dentro de los 30 días siguientes a la terminación). Diseño aprobado por David: Identity coordina y cada servicio limpia lo suyo (opción B); se conservan solo estadísticas agregadas (opción A). Módulo `src/modules/offboarding/`, rutas bajo `/auth/tenants/:id/...`, `JwtAuthGuard` + `PlatformAdminGuard` (sesión real de un administrador de plataforma: cada paso queda atribuido en el acta), `@SkipCsrf()` por la misma deuda aceptada que `/platform/memberships`.
+
+- `POST terminate {reason}`: desactiva el tenant, revoca sus refresh tokens (Postgres) y sus access tokens (barrido de `identity:access-token:*` en Redis filtrando por `tenantId` del payload) y abre el acta con `purge_after` = +30 días calendario.
+- `POST reactivate`: solo antes de iniciar la purga; reactiva el tenant y cierra el acta como `CANCELLED`.
+- `POST export`: ZIP (`manifest.json`, un JSON por tabla de cada servicio, fotos/firmas del bucket) subido a `exports/{tenantId}/` del bucket compartido; enlace firmado de 7 días. Incluye nombre/correo/rol de los empleados; nunca contraseñas, sesiones ni tokens.
+- `POST purge {earlyReason?}`: antes del día 30 exige `earlyReason`. Pasos guardados en el acta (`purge_step`), reanudable si algo falla: STATS → FILES (app-back borra `workshop/{tenantId}/…`) → EXPORTS → USERS_CAPTURED (usuarios que solo pertenecen a ese tenant, sin admins de plataforma) → TENANT (borra la fila; la base borra en cascada las tablas de app_auth, assistant, customers, inventory y workshop) → USERS (borra esos usuarios; si una FK lo impide, los anonimiza y desactiva).
+- `GET offboarding`: estado y acta.
+
+Acta: `app_auth.tenant_offboardings` (modelo `TenantOffboarding`), **sin FK** a `tenants` para que sobreviva al borrado; DDL en `scripts/2026-10-18-tenant-offboardings.sql` (hay que aplicarlo a mano, igual que el resto del DDL de este repo). Los otros servicios se llaman por `/internal/tenants/:id/(stats|export|files)` con `X-Internal-Key` (`INTERNAL_API_KEY`), ver `.env.example`.
+
+También en esta entrega: `refresh()` rechaza (e invalida la sesión) si el tenant está inactivo, y `login()` ya no lista tenants inactivos — antes desactivar un tenant no cerraba las sesiones existentes.
+
 ## Seguridad
 
 Bloqueo por intentos fallidos sobre `users.failed_login_attempts`/`locked_until` — **es un cambio de comportamiento real**: en el modelo anterior (single-tenant) esto era equivalente a "bloqueado en el único tenant"; ahora es **global al usuario**: si falla login repetidamente en el tenant A, queda bloqueado también para el tenant B. No hay forma de bloquear por tenant en este schema. Umbrales configurables (`AUTH_MAX_INTENTOS_FALLIDOS`, `AUTH_BLOQUEO_MINUTOS`), igual que antes.
