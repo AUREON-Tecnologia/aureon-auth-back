@@ -1,5 +1,5 @@
 import {
-  DeleteObjectsCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   S3Client,
@@ -35,6 +35,9 @@ export class S3ExportStorage implements IExportStorage {
           region: config.region,
           forcePathStyle: false,
           credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+          // Tigris (Railway buckets) rejects the checksum headers the SDK sends by default (same as workshop).
+          requestChecksumCalculation: 'WHEN_REQUIRED',
+          responseChecksumValidation: 'WHEN_REQUIRED',
         })
       : null;
   }
@@ -84,12 +87,11 @@ export class S3ExportStorage implements IExportStorage {
       const page = await client.send(
         new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }),
       );
-      const keys = (page.Contents ?? []).map((o) => ({ Key: o.Key! }));
-      if (keys.length > 0) {
-        await client.send(
-          new DeleteObjectsCommand({ Bucket: this.bucket, Delete: { Objects: keys, Quiet: true } }),
-        );
-        deleted += keys.length;
+      // One by one: the batch DeleteObjects needs a checksum header that Tigris rejects.
+      for (const object of page.Contents ?? []) {
+        if (!object.Key) continue;
+        await client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: object.Key }));
+        deleted++;
       }
       token = page.IsTruncated ? page.NextContinuationToken : undefined;
     } while (token);
