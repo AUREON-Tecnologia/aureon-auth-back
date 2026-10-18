@@ -204,3 +204,41 @@ model UserTenantMembership {
   @@unique([userId, tenantId])
   @@map("user_tenant_memberships")
 }
+
+/// Contract-end record of a tenant (data policy: return or delete the data within 30 days of termination).
+/// Deliberately WITHOUT a relation to `tenants`: it must survive the tenant's deletion (it is the deletion record).
+/// Holds no personal data: ids, codes, dates, aggregated statistics and counts only.
+model TenantOffboarding {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  tenantCode         String    @map("tenant_code") @db.VarChar(100)
+  tenantName         String    @map("tenant_name") @db.VarChar(255)
+  /// TERMINATED | CANCELLED | PURGED (CHECK in scripts/2026-10-18-tenant-offboardings.sql)
+  status             String    @db.VarChar(16)
+  terminatedAt       DateTime  @map("terminated_at") @db.Timestamptz(6)
+  terminatedBy       String    @map("terminated_by") @db.Uuid
+  terminationReason  String    @map("termination_reason")
+  /// terminatedAt + 30 calendar days. Before it, purge requires an explicit early reason.
+  purgeAfter         DateTime  @map("purge_after") @db.Timestamptz(6)
+  cancelledAt        DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  /// [{ key, createdAt, createdBy, expiresAt }]
+  exports            Json      @default("[]")
+  /// Last completed purge step (resumable): null until the purge starts.
+  purgeStep          String?   @map("purge_step") @db.VarChar(24)
+  purgeStartedAt     DateTime? @map("purge_started_at") @db.Timestamptz(6)
+  purgedAt           DateTime? @map("purged_at") @db.Timestamptz(6)
+  purgedBy           String?   @map("purged_by") @db.Uuid
+  earlyPurgeReason   String?   @map("early_purge_reason")
+  /// Aggregated, anonymous statistics kept after the purge (data policy, option A).
+  stats              Json?
+  /// Users of this tenant only, captured before the tenant row is deleted (their memberships go with it).
+  orphanUserIds      Json?     @map("orphan_user_ids")
+  /// What was deleted, per service/table.
+  deletedCounts      Json?     @map("deleted_counts")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId])
+  @@map("tenant_offboardings")
+}

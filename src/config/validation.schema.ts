@@ -34,4 +34,13 @@ export const validationSchema = Joi.object({
   // No .default() here on purpose: the real default depends on NODE_ENV,
   // computed in app.config.ts (open outside 'production', closed in it).
   CORS_ALLOW_ALL_ORIGINS: Joi.string().valid('true', 'false').optional(),
+  // Tenant offboarding (contract end). Optional: without them those endpoints answer 502/503.
+  INTERNAL_API_KEY: Joi.string().min(32).optional(),
+  APP_BACK_INTERNAL_URL: Joi.string().uri().optional(),
+  CLIENTS_BACK_INTERNAL_URL: Joi.string().uri().optional(),
+  EXPORT_STORAGE_S3_ENDPOINT: Joi.string().uri().optional(),
+  EXPORT_STORAGE_S3_BUCKET: Joi.string().optional(),
+  EXPORT_STORAGE_S3_REGION: Joi.string().optional(),
+  EXPORT_STORAGE_S3_ACCESS_KEY_ID: Joi.string().optional(),
+  EXPORT_STORAGE_S3_SECRET_ACCESS_KEY: Joi.string().optional(),
 });
