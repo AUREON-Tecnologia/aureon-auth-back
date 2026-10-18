@@ -4,4 +4,5 @@ export { default as securityConfig } from './security.config';
 export { default as platformConfig } from './platform.config';
 export { default as redisConfig } from './redis.config';
 export { default as cookieConfig } from './cookie.config';
+export { default as offboardingConfig } from './offboarding.config';
 export { validationSchema } from './validation.schema';

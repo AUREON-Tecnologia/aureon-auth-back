@@ -284,6 +284,18 @@ describe('AuthCommandService', () => {
       expect(sessionRepo.create).not.toHaveBeenCalled();
     });
 
+    it('no lista tenants desactivados; si no queda ninguno activo responde 401 sin emitir ticket', async () => {
+      const user = buildUsuario({ email });
+      const withHash = await buildUsuarioWithPassword({ email }, password);
+      authRepo.findByEmail.mockResolvedValue(user);
+      authRepo.findByEmailWithPassword.mockResolvedValue(withHash);
+      rbacRepo.listarMembresiasActivasDeUsuario.mockResolvedValue([buildMembresia({ userId: user.id })]);
+      tenantRepo.findById.mockResolvedValue(buildTenant({ activo: false }));
+
+      await expect(service.login(email, password)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(authRepo.registrarLoginExitoso).not.toHaveBeenCalled();
+    });
+
     it('camino feliz: tampoco abre sesion con mas de una membresia activa (mismo comportamiento que con 1)', async () => {
       const user = buildUsuario({ email });
       const withHash = await buildUsuarioWithPassword({ email }, password);
@@ -515,6 +527,7 @@ describe('AuthCommandService', () => {
       sessionRepo.findByTokenHash.mockResolvedValue(sesion);
       authRepo.findById.mockResolvedValue(user);
       rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: user.id }));
+      tenantRepo.findById.mockResolvedValue(buildTenant());
       sessionRepo.create.mockResolvedValue(buildSesion({ id: 'sesion-uuid-2' }));
 
       const result = await service.refresh(token);
@@ -523,6 +536,19 @@ describe('AuthCommandService', () => {
       expect(result.refreshToken).toBeDefined();
       expect(result.accessToken).toBeDefined();
       void hash;
+    });
+
+    it('lanza UnauthorizedException e invalida la sesion si el tenant fue desactivado (contrato terminado)', async () => {
+      const user = buildUsuario();
+      const sesion = buildSesion({ userId: user.id });
+      sessionRepo.findByTokenHash.mockResolvedValue(sesion);
+      authRepo.findById.mockResolvedValue(user);
+      rbacRepo.buscarMembresia.mockResolvedValue(buildMembresia({ userId: user.id }));
+      tenantRepo.findById.mockResolvedValue(buildTenant({ activo: false }));
+
+      await expect(service.refresh('token-valido')).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(sessionRepo.invalidate).toHaveBeenCalledWith(sesion.id);
+      expect(sessionRepo.create).not.toHaveBeenCalled();
     });
 
     it('lanza UnauthorizedException si el refresh token no existe', async () => {

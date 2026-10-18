@@ -197,8 +197,10 @@ export class AuthCommandService {
     // La password es correcta: solo ahora se revela si tiene o no algun tenant (mismo mensaje generico si no).
     const membresias = await this.rbacRepository.listarMembresiasActivasDeUsuario(user.id);
     const membresiasConRol = membresias.filter((m) => m.activo && m.rol);
+    // Only tenants that are still active (a terminated contract deactivates its tenant).
+    const tenants = await this.resolverTenants(membresiasConRol);
 
-    if (membresiasConRol.length === 0) {
+    if (tenants.length === 0) {
       this.auditLog.registrar({
         evento: 'LOGIN_FALLIDO',
         usuarioId: user.id,
@@ -209,7 +211,6 @@ export class AuthCommandService {
     }
 
     await this.authRepository.registrarLoginExitoso(user.id);
-    const tenants = await this.resolverTenants(membresiasConRol);
     const selectionToken = await this.issueSelectionTicket(user.id);
     this.auditLog.registrar({
       evento: 'LOGIN_TICKET_EMITIDO',
@@ -385,6 +386,13 @@ export class AuthCommandService {
       throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: 'Membership inactive or nonexistent' });
     }
 
+    // A deactivated tenant (e.g. terminated contract) must not keep renewing sessions.
+    const tenant = await this.tenantRepository.findById(sesion.tenantId);
+    if (!tenant || !tenant.activo) {
+      await this.sessionRepository.invalidate(sesion.id);
+      throw new UnauthorizedException({ codigo: 'INVALID_CREDENTIALS', mensaje: 'Tenant inactive or nonexistent' });
+    }
+
     // Rotacion: el refresh token usado queda invalidado se use o no una nueva sesion despues.
     await this.sessionRepository.invalidate(sesion.id);
     this.auditLog.registrar({ evento: 'REFRESH_TOKEN', usuarioId: user.id, tenantId: sesion.tenantId });
@@ -497,7 +505,7 @@ export class AuthCommandService {
       membresias.map((m) => this.tenantRepository.findById(m.tenantId)),
     );
     return tenants
-      .filter((t): t is NonNullable<typeof t> => Boolean(t))
+      .filter((t): t is NonNullable<typeof t> => Boolean(t) && t!.activo)
       .map((t) => ({ id: t.id, code: t.codigo, name: t.nombre }));
   }
 }
