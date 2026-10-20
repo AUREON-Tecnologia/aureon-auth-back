@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TenantOffboardingService } from './application/tenant-offboarding.service';
 import { EXPORT_STORAGE } from './domain/export-storage.port';
 import { TENANT_DATA_SOURCES } from './domain/tenant-data-source.port';
 import { TENANT_IDENTITY_STORE } from './domain/tenant-identity.port';
 import { TENANT_OFFBOARDING_REPOSITORY } from './domain/tenant-offboarding.repository';
 import { HttpTenantDataSource } from './infrastructure/http-tenant-data-source';
+import { OffboardingPurgeScheduler } from './infrastructure/offboarding-purge.scheduler';
 import { PrismaTenantIdentityStore } from './infrastructure/prisma-tenant-identity.store';
 import { PrismaTenantOffboardingRepository } from './infrastructure/prisma-tenant-offboarding.repository';
 import { ExportStorageConfig, S3ExportStorage } from './infrastructure/s3-export-storage';
@@ -22,9 +24,12 @@ const config = (c: ConfigService) => c.getOrThrow<OffboardingConfig>('offboardin
 
 /** TENANT_REPOSITORY comes from TenantsModule (@Global). */
 @Module({
+  // forRoot here and nowhere else: this module owns the only scheduled job of the service.
+  imports: [ScheduleModule.forRoot()],
   controllers: [TenantOffboardingController],
   providers: [
     TenantOffboardingService,
+    OffboardingPurgeScheduler,
     { provide: TENANT_OFFBOARDING_REPOSITORY, useClass: PrismaTenantOffboardingRepository },
     { provide: TENANT_IDENTITY_STORE, useClass: PrismaTenantIdentityStore },
     {

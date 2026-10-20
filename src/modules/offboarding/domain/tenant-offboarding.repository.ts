@@ -34,6 +34,11 @@ export interface ITenantOffboardingRepository {
   findOpen(tenantId: string): Promise<TenantOffboardingRecord | null>;
   /** Most recent record of a tenant, whatever its status. */
   findLatest(tenantId: string): Promise<TenantOffboardingRecord | null>;
+  /**
+   * Open (TERMINATED) processes the automatic purge must run: the 30 days are over, or a purge already started and
+   * stopped halfway (an early one included). Oldest first.
+   */
+  findDueForPurge(now: Date): Promise<TenantOffboardingRecord[]>;
   create(data: CreateOffboardingData): Promise<TenantOffboardingRecord>;
   update(id: string, patch: OffboardingPatch): Promise<TenantOffboardingRecord>;
 }

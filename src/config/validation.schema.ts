@@ -36,6 +36,7 @@ export const validationSchema = Joi.object({
   CORS_ALLOW_ALL_ORIGINS: Joi.string().valid('true', 'false').optional(),
   // Tenant offboarding (contract end). Optional: without them those endpoints answer 502/503.
   INTERNAL_API_KEY: Joi.string().min(32).optional(),
+  OFFBOARDING_AUTO_PURGE_ENABLED: Joi.string().valid('true', 'false').optional(),
   APP_BACK_INTERNAL_URL: Joi.string().uri().optional(),
   CLIENTS_BACK_INTERNAL_URL: Joi.string().uri().optional(),
   EXPORT_STORAGE_S3_ENDPOINT: Joi.string().uri().optional(),
