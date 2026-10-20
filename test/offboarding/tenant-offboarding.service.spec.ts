@@ -29,6 +29,13 @@ class MemRecords implements ITenantOffboardingRepository {
   async findLatest(tenantId: string) {
     return [...this.rows].reverse().find((r) => r.tenantId === tenantId) ?? null;
   }
+  async findDueForPurge(now: Date) {
+    return this.rows
+      .filter(
+        (r) => r.status === 'TERMINATED' && (r.purgeAfter <= now || r.purgeStartedAt !== null),
+      )
+      .map((r) => ({ ...r }));
+  }
   async create(d: CreateOffboardingData) {
     const row: TenantOffboardingRecord = {
       ...d,
@@ -267,5 +274,84 @@ describe('TenantOffboardingService', () => {
     advance(30 * DAY);
     await expect(service.purge(TENANT, ADMIN)).rejects.toBeInstanceOf(BadGatewayException);
     expect(calls).not.toContain('app-back.deleteFiles');
+  });
+});
+
+describe('TenantOffboardingService.purgeDue (automatic purge)', () => {
+  it('purges nothing before day 30 and everything due on day 30, with no actor (the system)', async () => {
+    const { service, records, calls, advance } = setup();
+    await service.terminate(TENANT, ADMIN, 'Fin del contrato');
+
+    advance(29 * DAY);
+    await expect(service.purgeDue()).resolves.toEqual({ due: 0, purged: 0, failed: 0 });
+    expect(calls).not.toContain('identity.deleteTenant');
+
+    advance(1 * DAY);
+    await expect(service.purgeDue()).resolves.toEqual({ due: 1, purged: 1, failed: 0 });
+    expect(records.rows[0]).toMatchObject({
+      status: 'PURGED',
+      purgedBy: null,
+      earlyPurgeReason: null,
+    });
+    expect(calls).toContain('identity.deleteTenant');
+
+    await expect(service.purgeDue()).resolves.toEqual({ due: 0, purged: 0, failed: 0 });
+  });
+
+  it('never touches a reactivated (cancelled) process', async () => {
+    const { service, records, calls, advance } = setup();
+    await service.terminate(TENANT, ADMIN, 'Fin del contrato');
+    await service.reactivate(TENANT, ADMIN);
+    advance(40 * DAY);
+
+    await expect(service.purgeDue()).resolves.toEqual({ due: 0, purged: 0, failed: 0 });
+    expect(records.rows[0].status).toBe('CANCELLED');
+    expect(calls).not.toContain('identity.deleteTenant');
+  });
+
+  it('resumes a purge that started (even early) and stopped halfway', async () => {
+    const { service, records, calls, advance } = setup();
+    await service.terminate(TENANT, ADMIN, 'Fin del contrato');
+    advance(5 * DAY);
+    Object.assign(records.rows[0], {
+      purgeStartedAt: new Date(),
+      earlyPurgeReason: 'Solicitud del cliente',
+      purgeStep: 'STATS',
+    });
+
+    await expect(service.purgeDue()).resolves.toEqual({ due: 1, purged: 1, failed: 0 });
+    expect(records.rows[0]).toMatchObject({
+      status: 'PURGED',
+      earlyPurgeReason: 'Solicitud del cliente',
+    });
+    expect(calls).toContain('identity.deleteTenant');
+  });
+
+  it('one tenant failing does not stop the others; it stays open for the next run', async () => {
+    const { service, records, advance } = setup();
+    const other = '22222222-2222-4222-8222-222222222222';
+    await records.create({
+      tenantId: other,
+      tenantCode: 'taller-y',
+      tenantName: 'Taller Y',
+      terminatedAt: new Date('2026-09-01T00:00:00Z'),
+      terminatedBy: ADMIN,
+      terminationReason: 'Fin del contrato',
+      purgeAfter: new Date('2026-10-01T00:00:00Z'),
+    });
+    await service.terminate(TENANT, ADMIN, 'Fin del contrato');
+    advance(30 * DAY);
+    const realPurge = service.purge.bind(service);
+    jest
+      .spyOn(service, 'purge')
+      .mockImplementation((tenantId, actorId, reason) =>
+        tenantId === other
+          ? Promise.reject(new Error('down'))
+          : realPurge(tenantId, actorId, reason),
+      );
+
+    await expect(service.purgeDue()).resolves.toEqual({ due: 2, purged: 1, failed: 1 });
+    expect(records.rows.find((r) => r.tenantId === TENANT)?.status).toBe('PURGED');
+    expect(records.rows.find((r) => r.tenantId === other)?.status).toBe('TERMINATED');
   });
 });

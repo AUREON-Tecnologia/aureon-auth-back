@@ -32,6 +32,17 @@ export class PrismaTenantOffboardingRepository implements ITenantOffboardingRepo
     return row ? toRecord(row) : null;
   }
 
+  async findDueForPurge(now: Date): Promise<TenantOffboardingRecord[]> {
+    const rows = await this.prisma.tenantOffboarding.findMany({
+      where: {
+        status: 'TERMINATED',
+        OR: [{ purgeAfter: { lte: now } }, { purgeStartedAt: { not: null } }],
+      },
+      orderBy: { purgeAfter: 'asc' },
+    });
+    return rows.map(toRecord);
+  }
+
   async create(data: CreateOffboardingData): Promise<TenantOffboardingRecord> {
     return toRecord(
       await this.prisma.tenantOffboarding.create({ data: { ...data, status: 'TERMINATED' } }),

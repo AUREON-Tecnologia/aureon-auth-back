@@ -305,6 +305,8 @@ Cumple la política de datos v1.1 (sección 9: devolver o eliminar los datos de 
 
 Acta: `app_auth.tenant_offboardings` (modelo `TenantOffboarding`), **sin FK** a `tenants` para que sobreviva al borrado; DDL en `scripts/2026-10-18-tenant-offboardings.sql` (hay que aplicarlo a mano, igual que el resto del DDL de este repo). Los otros servicios se llaman por `/internal/tenants/:id/(stats|export|files)` con `X-Internal-Key` (`INTERNAL_API_KEY`), ver `.env.example`.
 
+**Purga automática (decisión 2026-10-19, opción A):** `OffboardingPurgeScheduler` (`@nestjs/schedule`, `ScheduleModule.forRoot()` en `OffboardingModule`) corre todos los días a las 08:30 UTC y llama a `TenantOffboardingService.purgeDue()`: purga los procesos `TERMINATED` con `purge_after` vencido y retoma los que quedaron a medias (también una purga anticipada interrumpida). Sin actor: `purged_by` queda NULL (= el sistema) y la auditoría lleva `automatic: true`. Un tenant que falla no detiene a los demás y se reintenta al día siguiente. Bloqueo en Redis (`identity:offboarding:auto-purge:lock`, SET NX, 1 h) para que solo una réplica la ejecute; si Redis falla, no corre (se reintenta al día siguiente); si Redis no está configurado, corre sin bloqueo. Una línea de log por ejecución, también con 0 (`offboarding auto-purge due=N purged=N failed=N`), para alertar por ausencia. `OFFBOARDING_AUTO_PURGE_ENABLED=false` la apaga (p. ej. en local).
+
 También en esta entrega: `refresh()` rechaza (e invalida la sesión) si el tenant está inactivo, y `login()` ya no lista tenants inactivos — antes desactivar un tenant no cerraba las sesiones existentes.
 
 ## Seguridad

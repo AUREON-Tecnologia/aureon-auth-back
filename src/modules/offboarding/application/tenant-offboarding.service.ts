@@ -34,6 +34,12 @@ import type { ITenantOffboardingRepository } from '../domain/tenant-offboarding.
 export const OFFBOARDING_CLOCK = Symbol('OffboardingClock');
 export type OffboardingClock = () => Date;
 
+export interface AutoPurgeResult {
+  due: number;
+  purged: number;
+  failed: number;
+}
+
 export interface ExportResult {
   key: string;
   url: string;
@@ -158,7 +164,7 @@ export class TenantOffboardingService {
    */
   async purge(
     tenantId: string,
-    actorId: string,
+    actorId: string | null,
     earlyReason?: string,
   ): Promise<TenantOffboardingRecord> {
     const latest = await this.records.findLatest(tenantId);
@@ -180,8 +186,12 @@ export class TenantOffboardingService {
       this.audit.registrar({
         evento: 'TENANT_PURGA_INICIADA',
         tenantId,
-        actorId,
-        detalle: { early, earlyReason: early ? earlyReason : undefined },
+        actorId: actorId ?? undefined,
+        detalle: {
+          early,
+          earlyReason: early ? earlyReason : undefined,
+          automatic: actorId === null,
+        },
       });
     }
 
@@ -198,10 +208,33 @@ export class TenantOffboardingService {
     this.audit.registrar({
       evento: 'TENANT_PURGADO',
       tenantId,
-      actorId,
-      detalle: { deletedCounts: record.deletedCounts },
+      actorId: actorId ?? undefined,
+      detalle: { deletedCounts: record.deletedCounts, automatic: actorId === null },
     });
     return record;
+  }
+
+  /**
+   * Daily automatic purge (data policy 9: data is deleted when the 30 days end). Runs every due process with no actor
+   * (purgedBy null = the system). One tenant failing does not stop the others; it is retried on the next run, since
+   * the purge resumes where it stopped.
+   */
+  async purgeDue(): Promise<AutoPurgeResult> {
+    const due = await this.records.findDueForPurge(this.clock());
+    let purged = 0;
+    let failed = 0;
+    for (const record of due) {
+      try {
+        await this.purge(record.tenantId, null);
+        purged++;
+      } catch (error) {
+        failed++;
+        this.logger.error(
+          `offboarding auto-purge tenant=${record.tenantId} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    return { due: due.length, purged, failed };
   }
 
   async status(tenantId: string): Promise<TenantOffboardingRecord> {
